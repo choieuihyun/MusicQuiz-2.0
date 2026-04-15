@@ -26,6 +26,7 @@ export interface Player {
 export interface Room {
   roomCode: string
   hostId: string
+  hostName: string
   eraId: string
   partId: string
   status: 'waiting' | 'playing' | 'result' | 'finished'
@@ -40,8 +41,8 @@ export interface Room {
 export async function createRoom(
   hostId: string,
   hostName: string,
-  eraId: string,
-  partId: string
+  eraId: string = '',
+  partId: string = ''
 ): Promise<string> {
   const roomCode = generateRoomCode()
   const roomRef = ref(rtdb, `rooms/${roomCode}`)
@@ -56,6 +57,7 @@ export async function createRoom(
   const room: Room = {
     roomCode,
     hostId,
+    hostName,
     eraId,
     partId,
     status: 'waiting',
@@ -161,7 +163,7 @@ export async function nextQuestion(roomCode: string, questionIndex: number): Pro
   }
 
   // 모든 플레이어 submitted, answer 초기화
-  Object.keys(room.players).forEach(playerId => {
+  Object.keys(room.players ?? {}).forEach(playerId => {
     updates[`players/${playerId}/submitted`] = false
     updates[`players/${playerId}/answer`] = null
   })
@@ -205,4 +207,25 @@ export async function finishGame(roomCode: string): Promise<void> {
 export async function deleteRoom(roomCode: string): Promise<void> {
   const roomRef = ref(rtdb, `rooms/${roomCode}`)
   await remove(roomRef)
+}
+
+// 전체 방 목록 실시간 구독
+export function subscribeToRooms(
+  callback: (rooms: Record<string, Room>) => void
+): () => void {
+  const roomsRef = ref(rtdb, 'rooms')
+  onValue(roomsRef, (snapshot) => {
+    callback(snapshot.exists() ? (snapshot.val() as Record<string, Room>) : {})
+  })
+  return () => off(roomsRef)
+}
+
+// 연대/파트 선택 업데이트 (호스트만)
+export async function updateRoomSelection(
+  roomCode: string,
+  eraId: string,
+  partId: string
+): Promise<void> {
+  const roomRef = ref(rtdb, `rooms/${roomCode}`)
+  await update(roomRef, { eraId, partId })
 }

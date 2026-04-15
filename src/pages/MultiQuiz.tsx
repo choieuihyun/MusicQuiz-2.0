@@ -61,7 +61,7 @@ export default function MultiQuiz() {
   const isHost = room?.hostId === sessionId
   const currentQ = room ? room.currentQuestion : 0
   const q = questions[currentQ]
-  const players = room ? Object.entries(room.players).sort((a, b) => b[1].score - a[1].score) : []
+  const players = room ? Object.entries(room.players ?? {}).sort((a, b) => b[1].score - a[1].score) : []
   const _allSubmitted = room ? Object.values(room.players).every(p => p.submitted) : false
   void _allSubmitted // used in useEffect dependency tracking
   const myPlayer = room?.players[sessionId]

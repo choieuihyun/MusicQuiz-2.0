@@ -79,11 +79,64 @@
 
 ---
 
+## 2026-04-15 (2차)
+
+### Firebase 연결
+- `.env.local` 생성 — Firebase 프로젝트 환경변수 세팅 완료
+- `firebase.ts` — 미사용 Auth 초기화 제거 (`CONFIGURATION_NOT_FOUND` 에러 해결)
+- Firebase Realtime Database 보안 규칙 `.read / .write: true` 설정
+
+### 멀티플레이어 전체 흐름 구현
+
+**로그인 화면 (`Login.tsx`)**
+- 닉네임만 입력 (비밀번호 없음) → `/rooms` 이동
+- 하단 "관리자 로그인" 토글 → 관리자 코드 입력 시 어드민 권한 부여
+- 어드민 코드: `MUSICQUIZ_ADMIN` (코드 내 상수로 관리)
+
+**방 목록 화면 (`Rooms.tsx`)**
+- Firebase RTDB `rooms/` 실시간 구독 — `waiting` 상태 방만 표시
+- 방 만들기 버튼 → 방 생성 후 `/room/:roomCode` 이동
+- 방 카드 클릭 → 참가 후 `/room/:roomCode` 이동
+- 솔로 플레이 버튼 → `/` 이동
+- 어드민 계정: 각 방 카드에 🗑️ 삭제 버튼 노출
+
+**방 화면 (`Room.tsx`) 전면 재작성**
+- 기존 대기실 UI → 현재 홈 화면(연대/파트 선택) UI로 교체
+- 상단 참가자 칩 스트립 (👑 방장 / 🎤 참가자 구분)
+- 방장: 연대 카드 → 파트 클릭 시 RTDB에 `eraId / partId` 저장 → 실시간 동기화
+- 참가자: 방장 선택 내용 실시간 반영, 선택지 비활성화
+- 방장 + 선택 완료 시 하단 고정 "게임 시작 (N명) →" 버튼 노출
+- 게임 시작 → `status: playing` → 전원 `/multi/:roomCode` 자동 이동
+- 방 코드 우상단 표시 / 나가기 버튼
+
+### realtimeDB.ts 기능 추가
+- `subscribeToRooms()` — 전체 방 목록 실시간 구독
+- `updateRoomSelection()` — 방장의 연대/파트 선택 RTDB 반영
+- `createRoom()` — `eraId / partId` 선택 선택사항으로 변경 (기본값 `''`)
+- `Room` 인터페이스에 `hostName` 필드 추가 — 방장 퇴장 후에도 이름 유지
+
+### playerStore.ts
+- `isAdmin: boolean` 상태 추가 (로컬스토리지 persist 포함)
+- `setAdmin()` 액션 추가
+
+### App.tsx 라우트 추가
+- `/login` → `Login`
+- `/rooms` → `Rooms`
+- 기존 `/lobby` 라우트 제거
+
+### Home.tsx
+- 멀티플레이 버튼 링크 `/lobby` → `/rooms` 변경
+
+### 버그 수정
+- `Object.entries(room.players)` — players가 빈 상태일 때 null/undefined 에러 → `?? {}` 처리 (`Room.tsx`, `MultiQuiz.tsx`, `realtimeDB.ts`)
+- 방장 나가기 시 `deleteRoom` 호출하던 로직 제거 → 방 유지되도록 수정
+
+---
+
 > 다음 작업 예정
-> - Firebase `.env.local` 세팅 및 연결
-> - Google 로그인 연동
+> - MultiQuiz 타이머 UI (questionStartedAt 기반 카운트다운)
 > - Firestore 퀴즈 데이터 로드 (mockData 교체)
 > - Firebase Storage 음악 업로드 + MusicPlayer 연결
 > - 퀴즈 완료 시 점수 Firestore 저장
 > - 랭킹 Firestore 실데이터 연결
-> - 멀티플레이어 (Lobby, MultiQuiz 화면)
+> - Firebase RTDB 보안 규칙 강화 (현재 전체 공개 상태)

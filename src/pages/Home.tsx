@@ -55,7 +55,7 @@ export default function Home() {
         <div style={{ position: 'absolute', top: 20, right: 20, display: 'flex', gap: 8 }}>
           {/* 멀티플레이 버튼 */}
           <button
-            onClick={() => navigate('/lobby')}
+            onClick={() => navigate('/rooms')}
             style={{
               background: 'linear-gradient(135deg, rgba(34,211,238,0.15), rgba(59,130,246,0.1))',
               border: '1px solid rgba(34,211,238,0.3)',
