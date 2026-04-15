@@ -1,5 +1,5 @@
 // TODO: Firebase Firestore 연동 시 이 파일 제거하고 lib/quiz.ts로 교체
-import { QuizQuestion } from '../types/quiz'
+import type { QuizQuestion } from '../types/quiz'
 
 export const MOCK_QUESTIONS: QuizQuestion[] = [
   {

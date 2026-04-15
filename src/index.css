@@ -34,3 +34,55 @@ body {
 .header-enter {
   animation: fadeSlideUp 0.6s cubic-bezier(0.34,1.2,0.64,1) both;
 }
+
+/* 정답 카드 버스트 */
+@keyframes correctBurst {
+  0%   { transform: scale(1); box-shadow: 0 0 0 rgba(34,197,94,0); }
+  25%  { transform: scale(1.04); box-shadow: 0 0 0 8px rgba(34,197,94,0.25), 0 0 60px rgba(34,197,94,0.5); }
+  60%  { transform: scale(1.02); box-shadow: 0 0 0 4px rgba(34,197,94,0.15), 0 0 40px rgba(34,197,94,0.3); }
+  100% { transform: scale(1); box-shadow: 0 0 16px rgba(34,197,94,0.2); }
+}
+
+/* 오답 카드 흔들기 */
+@keyframes wrongShake {
+  0%, 100% { transform: translateX(0); }
+  15%  { transform: translateX(-10px) rotate(-1deg); }
+  30%  { transform: translateX(10px) rotate(1deg); }
+  45%  { transform: translateX(-8px); }
+  60%  { transform: translateX(8px); }
+  75%  { transform: translateX(-4px); }
+  88%  { transform: translateX(4px); }
+}
+
+/* 화면 오버레이 플래시 */
+@keyframes flashOverlay {
+  0%   { opacity: 0.55; }
+  100% { opacity: 0; }
+}
+
+/* 결과 텍스트 바운스 */
+@keyframes resultPop {
+  0%   { transform: scale(0.4) translateY(20px); opacity: 0; }
+  55%  { transform: scale(1.25) translateY(-6px); opacity: 1; }
+  75%  { transform: scale(0.95) translateY(2px); }
+  100% { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+/* 컨페티 파티클 */
+@keyframes confetti0  { to { transform: translate(-80px, -160px) rotate(520deg) scale(0); opacity: 0; } }
+@keyframes confetti1  { to { transform: translate(80px,  -170px) rotate(-600deg) scale(0); opacity: 0; } }
+@keyframes confetti2  { to { transform: translate(-130px,-120px) rotate(400deg) scale(0); opacity: 0; } }
+@keyframes confetti3  { to { transform: translate(130px, -130px) rotate(-450deg) scale(0); opacity: 0; } }
+@keyframes confetti4  { to { transform: translate(-40px, -190px) rotate(700deg) scale(0); opacity: 0; } }
+@keyframes confetti5  { to { transform: translate(40px,  -185px) rotate(-700deg) scale(0); opacity: 0; } }
+@keyframes confetti6  { to { transform: translate(-160px,-80px)  rotate(300deg) scale(0); opacity: 0; } }
+@keyframes confetti7  { to { transform: translate(160px, -90px)  rotate(-300deg) scale(0); opacity: 0; } }
+@keyframes confetti8  { to { transform: translate(-100px,-150px) rotate(560deg) scale(0); opacity: 0; } }
+@keyframes confetti9  { to { transform: translate(100px, -155px) rotate(-560deg) scale(0); opacity: 0; } }
+@keyframes confetti10 { to { transform: translate(-50px, -200px) rotate(800deg) scale(0); opacity: 0; } }
+@keyframes confetti11 { to { transform: translate(50px,  -195px) rotate(-800deg) scale(0); opacity: 0; } }
+
+.correct-burst  { animation: correctBurst 0.65s cubic-bezier(0.22,1,0.36,1) both; }
+.wrong-shake    { animation: wrongShake 0.55s cubic-bezier(0.36,0.07,0.19,0.97) both; }
+.result-pop     { animation: resultPop 0.5s cubic-bezier(0.34,1.4,0.64,1) both; }
+.flash-overlay  { animation: flashOverlay 0.7s ease-out forwards; }

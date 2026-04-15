@@ -51,6 +51,43 @@ export default function Home() {
 
       {/* 헤더 — 중앙 정렬 */}
       <header className="header-enter" style={{ padding: '64px 24px 36px', textAlign: 'center', position: 'relative' }}>
+        {/* 상단 버튼들 */}
+        <div style={{ position: 'absolute', top: 20, right: 20, display: 'flex', gap: 8 }}>
+          {/* 멀티플레이 버튼 */}
+          <button
+            onClick={() => navigate('/lobby')}
+            style={{
+              background: 'linear-gradient(135deg, rgba(34,211,238,0.15), rgba(59,130,246,0.1))',
+              border: '1px solid rgba(34,211,238,0.3)',
+              borderRadius: 14, padding: '9px 14px',
+              display: 'flex', alignItems: 'center', gap: 6,
+              cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+              color: '#22d3ee', fontSize: 13, fontWeight: 600,
+              backdropFilter: 'blur(10px)',
+              boxShadow: '0 2px 12px rgba(34,211,238,0.2)',
+            }}
+          >
+            <span style={{ fontSize: 16 }}>👥</span>
+            멀티
+          </button>
+
+          {/* 랭킹 버튼 */}
+          <button
+            onClick={() => navigate('/ranking')}
+            style={{
+              background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)',
+              borderRadius: 14, padding: '9px 14px',
+              display: 'flex', alignItems: 'center', gap: 6,
+              cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+              color: 'rgba(255,255,255,0.6)', fontSize: 13, fontWeight: 600,
+              backdropFilter: 'blur(10px)',
+            }}
+          >
+            <span style={{ fontSize: 16 }}>🏆</span>
+            랭킹
+          </button>
+        </div>
+
         <div style={{ fontSize: 52, lineHeight: 1, marginBottom: 16,
           filter: 'drop-shadow(0 0 24px rgba(168,85,247,0.6))',
         }}>

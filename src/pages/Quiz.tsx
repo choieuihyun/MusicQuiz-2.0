@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { MOCK_QUESTIONS } from '../lib/mockQuizData'
-import { QuizQuestion } from '../types/quiz'
+import type { QuizQuestion } from '../types/quiz'
+import MusicPlayer from '../components/MusicPlayer'
+import type { Track } from '../components/MusicPlayer'
 
 const ERA_COLORS: Record<string, { from: string; to: string; rgb: string }> = {
   '2000s': { from: '#a855f7', to: '#6366f1', rgb: '168,85,247' },
@@ -47,20 +49,42 @@ export default function Quiz() {
   // TODO: Firebase에서 eraId + partId 기준으로 문제 로드
   const questions: QuizQuestion[] = MOCK_QUESTIONS
 
+  // TODO: Firebase Storage URL로 교체
+  const tracks: Track[] = questions.map(q => ({
+    title: q.song,
+    artist: q.artist,
+    src: '',  // Firebase Storage URL 연결 전까지 빈 값
+  }))
+
   const [current, setCurrent] = useState(0)
   const [selected, setSelected] = useState<number | null>(null)
+  const [revealed, setRevealed] = useState(false)
   const [score, setScore] = useState(0)
   const [finished, setFinished] = useState(false)
+  const [flash, setFlash] = useState<'correct' | 'wrong' | null>(null)
+  const [showConfetti, setShowConfetti] = useState(false)
 
   const q = questions[current]
   const isCorrect = selected === q.correctId
-  const answered = selected !== null
-  const progress = ((current + (answered ? 1 : 0)) / questions.length) * 100
+  const progress = ((current + (revealed ? 1 : 0)) / questions.length) * 100
 
   function handleSelect(optionId: number) {
-    if (answered) return
+    if (revealed) return
     setSelected(optionId)
-    if (optionId === q.correctId) setScore(s => s + 1)
+  }
+
+  function handleReveal() {
+    if (selected === null || revealed) return
+    setRevealed(true)
+    if (selected === q.correctId) {
+      setScore(s => s + 1)
+      setFlash('correct')
+      setShowConfetti(true)
+      setTimeout(() => setShowConfetti(false), 1200)
+    } else {
+      setFlash('wrong')
+    }
+    setTimeout(() => setFlash(null), 700)
   }
 
   function handleNext() {
@@ -69,8 +93,11 @@ export default function Quiz() {
     } else {
       setCurrent(c => c + 1)
       setSelected(null)
+      setRevealed(false)
     }
   }
+
+  const CONFETTI_COLORS = ['#a855f7','#22d3ee','#f472b6','#facc15','#4ade80','#fb923c','#fff']
 
   // 결과 화면
   if (finished) {
@@ -123,7 +150,55 @@ export default function Quiz() {
       background: 'radial-gradient(ellipse at 50% -10%, #1a0a3e 0%, #0d0820 55%, #060412 100%)',
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       display: 'flex', flexDirection: 'column',
+      position: 'relative', overflow: 'hidden',
     }}>
+
+      {/* 화면 플래시 오버레이 */}
+      {flash && (
+        <div className="flash-overlay" style={{
+          position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 100,
+          background: flash === 'correct'
+            ? 'radial-gradient(ellipse at 50% 60%, rgba(34,197,94,0.35) 0%, transparent 70%)'
+            : 'radial-gradient(ellipse at 50% 60%, rgba(239,68,68,0.35) 0%, transparent 70%)',
+        }} />
+      )}
+
+      {/* 정답/오답 결과 팝업 */}
+      {revealed && (
+        <div className="result-pop" style={{
+          position: 'fixed', top: '18%', left: '50%', transform: 'translateX(-50%)',
+          zIndex: 101, pointerEvents: 'none',
+          background: isCorrect ? 'rgba(34,197,94,0.18)' : 'rgba(239,68,68,0.18)',
+          border: `1.5px solid ${isCorrect ? 'rgba(34,197,94,0.5)' : 'rgba(239,68,68,0.5)'}`,
+          borderRadius: 20, padding: '10px 24px',
+          backdropFilter: 'blur(12px)',
+          display: 'flex', alignItems: 'center', gap: 8,
+          boxShadow: isCorrect ? '0 0 30px rgba(34,197,94,0.3)' : '0 0 30px rgba(239,68,68,0.3)',
+        }}>
+          <span style={{ fontSize: 22 }}>{isCorrect ? '🎉' : '😢'}</span>
+          <span style={{ fontSize: 17, fontWeight: 800, color: isCorrect ? '#4ade80' : '#f87171' }}>
+            {isCorrect ? '정답!' : '오답!'}
+          </span>
+        </div>
+      )}
+
+      {/* 컨페티 파티클 (정답 시) */}
+      {showConfetti && (
+        <div style={{ position: 'fixed', top: '55%', left: '50%', zIndex: 102, pointerEvents: 'none' }}>
+          {Array.from({ length: 12 }).map((_, i) => (
+            <div key={i} style={{
+              position: 'absolute',
+              width: i % 3 === 0 ? 10 : i % 3 === 1 ? 8 : 6,
+              height: i % 3 === 0 ? 10 : i % 3 === 1 ? 8 : 6,
+              borderRadius: i % 2 === 0 ? '50%' : 2,
+              background: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+              opacity: 1,
+              animation: `confetti${i} ${0.7 + (i % 4) * 0.1}s cubic-bezier(0.2,0.8,0.4,1) ${i * 30}ms forwards`,
+              boxShadow: `0 0 6px ${CONFETTI_COLORS[i % CONFETTI_COLORS.length]}`,
+            }} />
+          ))}
+        </div>
+      )}
 
       {/* 상단 바 */}
       <div style={{ padding: '56px 20px 20px', position: 'relative' }}>
@@ -164,6 +239,11 @@ export default function Quiz() {
             transition: 'width 0.4s ease',
           }} />
         </div>
+      </div>
+
+      {/* 뮤직 플레이어 */}
+      <div style={{ padding: '0 16px 16px' }}>
+        <MusicPlayer tracks={tracks} rgb={era.rgb} colorFrom={era.from} colorTo={era.to} />
       </div>
 
       {/* 가사 카드 */}
@@ -213,18 +293,21 @@ export default function Quiz() {
             let border = 'rgba(255,255,255,0.08)'
             let textColor = 'rgba(255,255,255,0.85)'
             let shadow = 'inset 0 1px 0 rgba(255,255,255,0.06)'
+            let animClass = ''
 
-            if (answered) {
+            if (revealed) {
               if (isAnswer) {
                 bg = 'rgba(34,197,94,0.15)'
                 border = 'rgba(34,197,94,0.5)'
                 textColor = '#4ade80'
-                shadow = '0 0 16px rgba(34,197,94,0.2)'
+                shadow = '0 0 20px rgba(34,197,94,0.25)'
+                animClass = 'correct-burst'
               } else if (isSelected) {
                 bg = 'rgba(239,68,68,0.15)'
                 border = 'rgba(239,68,68,0.5)'
                 textColor = '#f87171'
                 shadow = '0 0 16px rgba(239,68,68,0.2)'
+                animClass = 'wrong-shake'
               }
             } else if (isSelected) {
               bg = `rgba(${era.rgb},0.15)`
@@ -235,6 +318,7 @@ export default function Quiz() {
             return (
               <button
                 key={opt.id}
+                className={animClass}
                 onClick={() => handleSelect(opt.id)}
                 style={{
                   width: '100%',
@@ -242,43 +326,55 @@ export default function Quiz() {
                   border: `1px solid ${border}`,
                   borderRadius: 16, padding: '15px 18px',
                   display: 'flex', alignItems: 'center', gap: 14,
-                  cursor: answered ? 'default' : 'pointer',
+                  cursor: revealed ? 'default' : 'pointer',
                   WebkitTapHighlightColor: 'transparent', textAlign: 'left',
                   boxShadow: shadow,
-                  transition: 'background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease',
+                  transition: 'background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease',
                 }}
               >
-                {/* 번호 */}
                 <div style={{
                   width: 30, height: 30, borderRadius: 9, flexShrink: 0,
-                  background: answered && isAnswer
+                  background: revealed && isAnswer
                     ? 'rgba(34,197,94,0.25)'
-                    : answered && isSelected
+                    : revealed && isSelected
                       ? 'rgba(239,68,68,0.25)'
                       : `rgba(${era.rgb},0.12)`,
-                  border: `1px solid ${answered && isAnswer ? 'rgba(34,197,94,0.4)' : answered && isSelected ? 'rgba(239,68,68,0.4)' : `rgba(${era.rgb},0.2)`}`,
+                  border: `1px solid ${revealed && isAnswer ? 'rgba(34,197,94,0.4)' : revealed && isSelected ? 'rgba(239,68,68,0.4)' : `rgba(${era.rgb},0.2)`}`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: 12, fontWeight: 800,
-                  color: answered && isAnswer ? '#4ade80' : answered && isSelected ? '#f87171' : `rgba(${era.rgb},0.9)`,
+                  color: revealed && isAnswer ? '#4ade80' : revealed && isSelected ? '#f87171' : `rgba(${era.rgb},0.9)`,
                 }}>
                   {opt.id}
                 </div>
                 <span style={{ fontSize: 15, fontWeight: 600, color: textColor, flex: 1 }}>
                   {opt.text}
                 </span>
-                {answered && isAnswer && (
-                  <span style={{ fontSize: 18 }}>✓</span>
-                )}
-                {answered && isSelected && !isAnswer && (
-                  <span style={{ fontSize: 18 }}>✗</span>
-                )}
+                {revealed && isAnswer && <span style={{ fontSize: 18 }}>✓</span>}
+                {revealed && isSelected && !isAnswer && <span style={{ fontSize: 18 }}>✗</span>}
               </button>
             )
           })}
         </div>
 
-        {/* 다음 버튼 */}
-        {answered && (
+        {/* 정답 확인 버튼 */}
+        {selected !== null && !revealed && (
+          <button
+            onClick={handleReveal}
+            style={{
+              width: '100%', marginTop: 4, marginBottom: 8,
+              background: `linear-gradient(135deg, ${era.from}, ${era.to})`,
+              border: 'none', borderRadius: 18, padding: '17px',
+              fontSize: 16, fontWeight: 700, color: '#fff', cursor: 'pointer',
+              boxShadow: `0 8px 28px rgba(${era.rgb},0.45), inset 0 1px 0 rgba(255,255,255,0.2)`,
+              animation: 'fadeSlideUp 0.3s ease both',
+            }}
+          >
+            정답 확인
+          </button>
+        )}
+
+        {/* 다음 문제 버튼 */}
+        {revealed && (
           <button
             onClick={handleNext}
             style={{
@@ -289,9 +385,9 @@ export default function Quiz() {
               border: 'none', borderRadius: 18, padding: '17px',
               fontSize: 16, fontWeight: 700, color: '#fff', cursor: 'pointer',
               boxShadow: isCorrect
-                ? '0 8px 24px rgba(34,197,94,0.35)'
+                ? '0 8px 24px rgba(34,197,94,0.4)'
                 : `0 8px 24px rgba(${era.rgb},0.35)`,
-              animation: 'fadeSlideUp 0.3s ease both',
+              animation: 'fadeSlideUp 0.35s cubic-bezier(0.34,1.2,0.64,1) both',
             }}
           >
             {current + 1 >= questions.length ? '결과 보기 →' : '다음 문제 →'}
