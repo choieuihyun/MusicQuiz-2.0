@@ -13,11 +13,11 @@
 | 프레임워크 | Vite + React 18 + TypeScript |
 | 스타일링 | Tailwind CSS (`@tailwindcss/vite`) |
 | 라우팅 | React Router v7 |
-| 상태관리 | Zustand |
-| 인증 | Firebase Auth (Google 로그인) |
+| 상태관리 | Zustand (localStorage persist) |
+| 인증 | 닉네임 전용 (비밀번호 없음) + 어드민 코드 |
 | 솔로 점수/랭킹 DB | Firebase Firestore |
 | 멀티플레이어 실시간 동기화 | Firebase Realtime Database |
-| 음악 파일 저장 | Firebase Storage |
+| 음악 파일 저장 | Firebase Storage (미연결) |
 | 호스팅 | (미정) |
 
 ---
@@ -33,33 +33,28 @@ src/
 ├── pages/
 │   ├── Home.tsx             # 연대 선택 화면 (아코디언 카드) ✅
 │   ├── Quiz.tsx             # 솔로 퀴즈 진행 화면 ✅
-│   ├── Ranking.tsx          # 파트별 랭킹 화면 ✅
-│   ├── Login.tsx            # Google 로그인 화면 (예정)
-│   ├── Lobby.tsx            # 멀티플레이어 방 생성/입장 화면 (예정)
-│   └── MultiQuiz.tsx        # 멀티플레이어 퀴즈 화면 (예정)
+│   ├── Ranking.tsx          # 파트별 랭킹 화면 (Firestore 연동) ✅
+│   ├── Login.tsx            # 닉네임 입력 로그인 + 어드민 로그인 ✅
+│   ├── Rooms.tsx            # 멀티플레이어 방 목록 화면 ✅
+│   ├── Room.tsx             # 방 대기실 (홈 UI + 연대/파트 선택) ✅
+│   ├── MultiQuiz.tsx        # 멀티플레이어 퀴즈 진행 화면 ✅
+│   └── Lobby.tsx            # (미사용 — Rooms.tsx로 대체됨)
 │
 ├── components/
 │   └── MusicPlayer.tsx      # 음악 플레이어 컴포넌트 ✅
 │
-├── store/                   # Zustand 스토어 (예정)
-│   ├── authStore.ts         # 유저 인증 상태
-│   └── quizStore.ts         # 퀴즈 진행 상태
-│
-├── hooks/                   # 커스텀 훅 (예정)
-│   ├── useQuiz.ts
-│   ├── useRoom.ts           # 멀티플레이어 방 상태 구독
-│   └── useRanking.ts
+├── store/
+│   └── playerStore.ts       # 세션ID / 닉네임 / isAdmin / 현재 방코드 ✅
 │
 ├── lib/
 │   ├── firebase.ts          # Firebase 초기화 (Firestore + Realtime DB + Storage)
-│   ├── firestore.ts         # Firestore CRUD 함수 (예정)
-│   ├── realtimeDB.ts        # Realtime DB 방 관련 함수 (예정)
+│   ├── firestore.ts         # Firestore CRUD — saveScore, getPartRanking ✅
+│   ├── realtimeDB.ts        # Realtime DB — 방 관리 + 닉네임 중복 방지 ✅
 │   ├── mockQuizData.ts      # Firebase 연동 전 임시 퀴즈 데이터
-│   └── mockRankingData.ts   # Firebase 연동 전 임시 랭킹 데이터
+│   └── mockRankingData.ts   # (미사용 — Firestore로 교체됨)
 │
 └── types/
-    ├── quiz.ts              # QuizQuestion, QuizOption, QuizSet 타입
-    └── room.ts              # Room, Player, RoomStatus 타입 (예정)
+    └── quiz.ts              # QuizQuestion, QuizOption, QuizSet 타입
 ```
 
 ---
@@ -68,96 +63,93 @@ src/
 
 | 경로 | 컴포넌트 | 설명 |
 |------|----------|------|
-| `/` | Home | 연대/파트 선택 |
-| `/quiz/:eraId/:partId` | Quiz | 솔로 퀴즈 진행 |
-| `/ranking` | Ranking | 파트별 랭킹 (연대/파트 탭 내장) ✅ |
-| `/login` | Login | Google 로그인 (예정) |
-| `/lobby` | Lobby | 방 생성 또는 코드 입력 입장 (예정) |
-| `/room/:roomId` | MultiQuiz | 멀티플레이어 퀴즈 진행 (예정) |
+| `/` | Home | 연대/파트 선택 (솔로) ✅ |
+| `/quiz/:eraId/:partId` | Quiz | 솔로 퀴즈 진행 ✅ |
+| `/ranking` | Ranking | 파트별 랭킹 (Firestore) ✅ |
+| `/login` | Login | 닉네임 입력 / 어드민 로그인 ✅ |
+| `/rooms` | Rooms | 멀티플레이 방 목록 + 생성 ✅ |
+| `/room/:roomCode` | Room | 대기실 + 연대/파트 선택 ✅ |
+| `/multi/:roomCode` | MultiQuiz | 멀티플레이어 퀴즈 진행 ✅ |
 
 ---
 
 ## Firebase 설계
 
-### Authentication
-- Google 로그인 단일 방식
-- `uid`, `displayName`, `photoURL` 사용
+### 인증
+- Firebase Auth 미사용
+- 닉네임 + sessionId (로컬스토리지 persist) 기반
+- 어드민: 로그인 시 관리자 코드 입력으로 권한 부여 (`isAdmin: boolean`)
 
 ---
 
-### Firestore — 솔로 점수 / 랭킹
+### Realtime Database — 멀티플레이어 방 + 닉네임
 
 ```
-users/{uid}
-  ├─ displayName: string
-  └─ photoURL: string
+nicknames/{nickname}
+  ├─ sessionId: string
+  └─ updatedAt: number
 
-scores/{uid}_{eraId}_{partId}
-  ├─ uid: string
-  ├─ displayName: string
-  ├─ eraId: string          # "2000s" | "2010s" | "2020s"
-  ├─ partId: string         # "1" | "2" | "3"
-  ├─ score: number          # 맞힌 문제 수
-  ├─ total: number          # 전체 문제 수
-  └─ playedAt: Timestamp
-
-quizzes/{eraId}_{partId}
-  └─ questions: QuizQuestion[]
-```
-
-**파트별 랭킹 쿼리**
-```ts
-db.collection("scores")
-  .where("eraId", "==", eraId)
-  .where("partId", "==", partId)
-  .orderBy("score", "desc")
-  .limit(10)
-```
-
----
-
-### Realtime Database — 멀티플레이어 방
-
-```
-rooms/{roomId}
-  ├─ hostUid: string
-  ├─ eraId: string
-  ├─ partId: string
+rooms/{roomCode}
+  ├─ roomCode: string
+  ├─ hostId: string
+  ├─ hostName: string          # 방장 퇴장 후에도 이름 유지용
+  ├─ eraId: string             # 방장이 Room 화면에서 선택
+  ├─ partId: string            # 방장이 Room 화면에서 선택
   ├─ status: "waiting" | "playing" | "result" | "finished"
   ├─ currentQuestion: number
-  ├─ questionStartedAt: number    # 서버 타임스탬프 — 모든 클라이언트 타이머 기준
-  ├─ timeLimit: number            # 문제당 제한 시간 (초)
+  ├─ questionStartedAt: number | null
+  ├─ timeLimit: number
+  ├─ createdAt: number
   │
-  ├─ players/{uid}
-  │   ├─ displayName: string
-  │   ├─ score: number
-  │   └─ submitted: boolean       # 현재 문제 제출 여부
-  │
-  └─ answers/{questionIdx}/{uid}
-      ├─ optionId: number
-      └─ correct: boolean
+  └─ players/{sessionId}
+      ├─ displayName: string
+      ├─ score: number
+      ├─ submitted: boolean
+      └─ answer?: number | null
 ```
 
 **멀티플레이어 흐름**
 ```
-호스트 방 생성 → 6자리 roomId 공유
-→ 참가자 입장 (최대 10명)
-→ 호스트 시작
-→ 전원 questionStartedAt 기준 동일한 타이머로 카운트다운
-→ 각자 답 제출 (submitted: true)
-→ 전원 제출 or 시간 초과 → 정답 공개 + 점수 갱신
-→ 호스트가 다음 문제로 진행
-→ 종료 시 Firestore scores에 최종 점수 저장
+/login (닉네임 입력 + 중복 체크)
+→ /rooms (방 목록 실시간 구독)
+→ 방 생성 or 방 클릭 입장
+→ /room/:roomCode (홈 UI — 방장이 연대/파트 선택, 전원 실시간 동기화)
+→ 방장 "게임 시작" 클릭 → status: playing
+→ /multi/:roomCode (실시간 퀴즈 진행)
+→ 전원 제출 → 정답 공개 → 방장이 다음 문제 진행
+→ 마지막 문제 후 결과 화면 → Firestore 점수 저장
 ```
-
-**Security Rules 핵심**
-- `questionStartedAt + timeLimit` 초과 후 answers write 거부 (늦은 제출 차단)
-- `players` write는 본인 uid만 가능
-- `currentQuestion`, `status` 변경은 hostUid만 가능
 
 ---
 
-### Firebase Storage — 음악 파일
+### Firestore — 솔로/멀티 점수 / 랭킹
+
+```
+scores/{sessionId}_{eraId}_{partId}
+  ├─ sessionId: string
+  ├─ nickname: string
+  ├─ eraId: string          # "2000s" | "2010s" | "2020s"
+  ├─ partId: string         # "1" | "2" | "3"
+  ├─ score: number          # 맞힌 문제 수 (최고 점수만 저장)
+  ├─ total: number          # 전체 문제 수
+  └─ playedAt: number       # timestamp
+```
+
+**파트별 랭킹 쿼리**
+```ts
+query(
+  collection(db, 'scores'),
+  where('eraId', '==', eraId),
+  where('partId', '==', partId),
+  orderBy('score', 'desc'),
+  limit(10)
+)
+// ※ (eraId, partId, score) 복합 인덱스 필요
+```
+
+---
+
+### Firebase Storage — 음악 파일 (미연결)
 
 ```
 music/{eraId}/{partId}/{songTitle}.mp3
@@ -169,6 +161,7 @@ music/{eraId}/{partId}/{songTitle}.mp3
 ## 데이터 타입
 
 ```ts
+// src/types/quiz.ts
 interface QuizQuestion {
   id: string
   lyrics: string      // 빈칸은 (  ) 표기
@@ -178,21 +171,45 @@ interface QuizQuestion {
   correctId: number
 }
 
+// src/lib/realtimeDB.ts
 interface Room {
-  hostUid: string
+  roomCode: string
+  hostId: string
+  hostName: string
   eraId: string
   partId: string
   status: 'waiting' | 'playing' | 'result' | 'finished'
   currentQuestion: number
-  questionStartedAt: number
+  questionStartedAt: number | null
   timeLimit: number
   players: Record<string, Player>
+  createdAt: number
 }
 
 interface Player {
   displayName: string
   score: number
   submitted: boolean
+  answer?: number | null
+}
+
+// src/lib/firestore.ts
+interface ScoreEntry {
+  sessionId: string
+  nickname: string
+  eraId: string
+  partId: string
+  score: number
+  total: number
+  playedAt: number
+}
+
+// src/store/playerStore.ts
+interface PlayerState {
+  sessionId: string    // 자동 생성, localStorage persist
+  nickname: string
+  isAdmin: boolean
+  currentRoomCode: string | null
 }
 ```
 
@@ -218,21 +235,23 @@ interface Player {
 - [x] Home 화면 (연대 아코디언 카드)
 - [x] 솔로 Quiz 화면 (정답 확인 애니메이션 포함)
 - [x] MusicPlayer 컴포넌트
-- [x] 파트별 랭킹 화면 (mock 데이터)
-- [ ] Firebase `.env.local` 세팅 및 연결
-- [ ] Google 로그인
+- [x] 파트별 랭킹 화면
+- [x] Firebase `.env.local` 세팅 및 연결
+- [x] 닉네임 기반 로그인 (비밀번호 없음 + 어드민 코드)
 
 ### 2단계 — 솔로 모드 완성
+- [x] 퀴즈 완료 시 점수 Firestore 저장 (최고 점수 유지)
+- [x] 랭킹 Firestore 실데이터 연결
 - [ ] Firestore 퀴즈 데이터 로드 (mockData 교체)
 - [ ] Firebase Storage 음악 업로드 + 플레이어 연결
-- [ ] 퀴즈 완료 시 점수 Firestore 저장
-- [ ] 랭킹 Firestore 실데이터 연결
 - [ ] 실제 퀴즈 문제 데이터 입력
 
 ### 3단계 — 멀티플레이어
-- [ ] Realtime DB 방 생성 / 입장 (Lobby 화면)
-- [ ] 실시간 플레이어 목록 동기화
-- [ ] 동기화된 타이머 + 문제 진행
-- [ ] 실시간 점수판
-- [ ] 게임 종료 시 Firestore 점수 저장
-- [ ] Security Rules 설정 (제출 시간 제한, 권한 분리)
+- [x] 방 목록 화면 (Rooms.tsx)
+- [x] 방 생성 / 입장 (realtimeDB.ts)
+- [x] 실시간 플레이어 목록 동기화
+- [x] 방 화면에서 연대/파트 선택 동기화
+- [x] MultiQuiz 퀴즈 진행 + 결과 화면
+- [ ] MultiQuiz 타이머 UI (questionStartedAt 기반 카운트다운)
+- [ ] 멀티플레이 종료 시 Firestore 점수 저장
+- [ ] Security Rules 설정 (RTDB + Firestore)

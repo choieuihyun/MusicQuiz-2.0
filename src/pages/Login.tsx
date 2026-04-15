@@ -1,19 +1,21 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { usePlayerStore } from '../store/playerStore'
+import { registerNickname, releaseNickname } from '../lib/realtimeDB'
 
 const ADMIN_CODE = 'MUSICQUIZ_ADMIN'
 
 export default function Login() {
   const navigate = useNavigate()
-  const { setNickname, setAdmin } = usePlayerStore()
+  const { sessionId, nickname: prevNickname, setNickname, setAdmin } = usePlayerStore()
   const [input, setInput] = useState('')
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
   const [showAdmin, setShowAdmin] = useState(false)
   const [adminCode, setAdminCode] = useState('')
   const [adminError, setAdminError] = useState('')
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const trimmed = input.trim()
     if (!trimmed) { setError('닉네임을 입력해주세요'); return }
     if (trimmed.length < 2) { setError('2자 이상 입력해주세요'); return }
@@ -21,13 +23,29 @@ export default function Login() {
     if (showAdmin) {
       if (!adminCode.trim()) { setAdminError('관리자 코드를 입력해주세요'); return }
       if (adminCode.trim() !== ADMIN_CODE) { setAdminError('관리자 코드가 올바르지 않습니다'); return }
-      setAdmin(true)
-    } else {
-      setAdmin(false)
     }
 
-    setNickname(trimmed)
-    navigate('/rooms')
+    setLoading(true)
+    try {
+      const result = await registerNickname(trimmed, sessionId)
+      if (result === 'taken') {
+        setError('이미 사용 중인 닉네임이에요')
+        return
+      }
+
+      // 닉네임 변경 시 이전 닉네임 해제
+      if (prevNickname && prevNickname !== trimmed) {
+        await releaseNickname(prevNickname)
+      }
+
+      setAdmin(showAdmin)
+      setNickname(trimmed)
+      navigate('/rooms')
+    } catch {
+      setError('서버 오류가 발생했습니다')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -145,6 +163,7 @@ export default function Login() {
 
         <button
           onClick={handleSubmit}
+          disabled={loading}
           style={{
             width: '100%', padding: '16px', borderRadius: 16, border: 'none',
             background: showAdmin
@@ -153,11 +172,13 @@ export default function Login() {
             boxShadow: showAdmin
               ? '0 4px 24px rgba(245,158,11,0.4)'
               : '0 4px 24px rgba(168,85,247,0.45)',
-            fontSize: 16, fontWeight: 800, color: '#fff', cursor: 'pointer',
+            fontSize: 16, fontWeight: 800, color: '#fff',
+            cursor: loading ? 'not-allowed' : 'pointer',
+            opacity: loading ? 0.6 : 1,
             WebkitTapHighlightColor: 'transparent',
           }}
         >
-          {showAdmin ? '관리자로 시작하기 →' : '시작하기 →'}
+          {loading ? '확인 중...' : showAdmin ? '관리자로 시작하기 →' : '시작하기 →'}
         </button>
       </div>
     </div>

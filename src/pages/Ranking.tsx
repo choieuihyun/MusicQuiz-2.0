@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { MOCK_RANKINGS } from '../lib/mockRankingData'
+import { getPartRanking } from '../lib/firestore'
+import type { ScoreEntry } from '../lib/firestore'
 
 const ERAS = [
   { id: '2000s', label: '2000s', tag: '00s', from: '#a855f7', to: '#6366f1', rgb: '168,85,247' },
@@ -16,9 +17,18 @@ export default function Ranking() {
   const navigate = useNavigate()
   const [selectedEra, setSelectedEra] = useState('2000s')
   const [selectedPart, setSelectedPart] = useState('1')
+  const [entries, setEntries] = useState<ScoreEntry[]>([])
+  const [loading, setLoading] = useState(false)
 
   const era = ERAS.find(e => e.id === selectedEra)!
-  const entries = MOCK_RANKINGS[selectedEra]?.[selectedPart] ?? []
+
+  useEffect(() => {
+    setLoading(true)
+    getPartRanking(selectedEra, selectedPart)
+      .then(setEntries)
+      .catch(console.error)
+      .finally(() => setLoading(false))
+  }, [selectedEra, selectedPart])
 
   return (
     <div style={{
@@ -132,7 +142,11 @@ export default function Ranking() {
 
         {/* 랭킹 리스트 */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {entries.length === 0 ? (
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '60px 0', color: 'rgba(255,255,255,0.25)', fontSize: 15 }}>
+              불러오는 중...
+            </div>
+          ) : entries.length === 0 ? (
             <div style={{
               textAlign: 'center', padding: '60px 0',
               color: 'rgba(255,255,255,0.25)', fontSize: 15,
@@ -147,7 +161,7 @@ export default function Ranking() {
 
               return (
                 <div
-                  key={entry.uid}
+                  key={entry.sessionId}
                   style={{
                     borderRadius: 20,
                     background: isTop3
@@ -184,7 +198,7 @@ export default function Ranking() {
                         color: isTop3 ? '#fff' : 'rgba(255,255,255,0.7)',
                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                       }}>
-                        {entry.displayName}
+                        {entry.nickname}
                       </span>
                       <span style={{
                         fontSize: 14, fontWeight: 800, flexShrink: 0, marginLeft: 8,

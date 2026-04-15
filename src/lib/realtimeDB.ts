@@ -1,5 +1,5 @@
 import { rtdb } from './firebase'
-import { ref, set, get, onValue, update, remove, off } from 'firebase/database'
+import { ref, set, get, onValue, update, remove, off, runTransaction } from 'firebase/database'
 
 // 6자리 룸 코드 생성
 function generateRoomCode(): string {
@@ -218,6 +218,33 @@ export function subscribeToRooms(
     callback(snapshot.exists() ? (snapshot.val() as Record<string, Room>) : {})
   })
   return () => off(roomsRef)
+}
+
+// 닉네임 등록 (트랜잭션으로 중복 방지)
+// 반환: 'ok' = 등록 성공, 'taken' = 이미 사용 중
+export async function registerNickname(
+  nickname: string,
+  sessionId: string
+): Promise<'ok' | 'taken'> {
+  const nicknameRef = ref(rtdb, `nicknames/${nickname}`)
+  let result: 'ok' | 'taken' = 'taken'
+
+  await runTransaction(nicknameRef, (current) => {
+    if (current === null || current.sessionId === sessionId) {
+      result = 'ok'
+      return { sessionId, updatedAt: Date.now() }
+    }
+    result = 'taken'
+    return // 트랜잭션 중단
+  })
+
+  return result
+}
+
+// 닉네임 해제
+export async function releaseNickname(nickname: string): Promise<void> {
+  const nicknameRef = ref(rtdb, `nicknames/${nickname}`)
+  await remove(nicknameRef)
 }
 
 // 연대/파트 선택 업데이트 (호스트만)

@@ -133,10 +133,69 @@
 
 ---
 
+---
+
+## 2026-04-15 (3차)
+
+### 닉네임 중복 방지 (RTDB 트랜잭션)
+
+**`realtimeDB.ts`**
+- `registerNickname(nickname, sessionId)` 추가 — Firebase RTDB `runTransaction` 으로 원자적 중복 체크
+  - `nicknames/{nickname}` 경로에 다른 sessionId가 이미 있으면 `'taken'` 반환
+  - 없거나 본인 세션이면 `sessionId` + `updatedAt` 기록 후 `'ok'` 반환
+- `releaseNickname(nickname)` 추가 — 닉네임 변경 시 기존 닉네임 RTDB에서 삭제
+
+**`Login.tsx`**
+- `handleSubmit` 을 async로 변경 — `registerNickname` 호출 후 결과에 따라 에러 메시지 표시
+- 닉네임 변경 시 이전 닉네임 자동 해제 (`releaseNickname(prevNickname)`)
+
+### Firebase 서비스 구조 정리
+
+Firebase 3개 서비스 역할 분담:
+| 서비스 | 역할 |
+|--------|------|
+| **Firestore** | 솔로/멀티 최종 점수 저장, 파트별 랭킹 쿼리 |
+| **Realtime Database** | 멀티플레이어 방 실시간 동기화 (방 상태, 플레이어 목록, 정답 등) |
+| **Storage** | 음악 파일(.mp3) 저장 |
+
+### Firestore 점수/랭킹 시스템 구현
+
+**`src/lib/firestore.ts` 신규 생성**
+- `ScoreEntry` 인터페이스 정의 (`sessionId`, `nickname`, `eraId`, `partId`, `score`, `total`, `playedAt`)
+- `saveScore()` — 점수 저장 (동일 유저+파트의 기존 점수보다 높을 때만 덮어씀)
+  - docId: `${sessionId}_${eraId}_${partId}` (유저별·파트별 단일 문서)
+- `getPartRanking()` — 파트별 상위 10명 조회
+  - `where('eraId', '==', ...) + where('partId', '==', ...) + orderBy('score', 'desc') + limit(10)`
+  - 첫 쿼리 실행 시 콘솔에 복합 인덱스 생성 링크 출력 → 클릭하여 생성 필요
+
+**`Quiz.tsx`**
+- `usePlayerStore`에서 `sessionId`, `nickname` 가져오기
+- 퀴즈 완료(`finished === true`) 시 `saveScore` 자동 호출 (useEffect)
+
+**`Ranking.tsx`**
+- mock 데이터 제거 → Firestore `getPartRanking` 실데이터 연결
+- 연대/파트 탭 전환 시 Firestore 재조회
+- 로딩 상태 ("불러오는 중...") + 빈 데이터 ("아직 기록이 없어요") 처리
+
+### Firestore 설정 안내 (사용자 직접 진행 필요)
+- Firebase 콘솔 → Firestore Database → 데이터베이스 만들기 (테스트 모드, asia-northeast3)
+- 보안 규칙: `allow read, write: if true` (개발 단계)
+- 랭킹 첫 조회 시 콘솔에 뜨는 링크 클릭 → 복합 인덱스 생성 (`eraId`, `partId`, `score desc`)
+
+### ARCHITECTURE.md 전면 업데이트
+- 인증 방식: Firebase Auth → 닉네임 전용 (비밀번호 없음)
+- RTDB 구조에 `nicknames/{nickname}` 경로 추가
+- `Room` 인터페이스에 `hostName` 필드 추가
+- Firestore 구조: `uid` → `sessionId`, `displayName` → `nickname` 으로 변경
+- `PlayerState` 타입 (`sessionId`, `nickname`, `isAdmin`, `currentRoomCode`) 문서화
+- 실제 파일 구조에 맞게 폴더 트리 및 라우팅 표 업데이트
+- 로드맵 체크박스 최신화
+
+---
+
 > 다음 작업 예정
 > - MultiQuiz 타이머 UI (questionStartedAt 기반 카운트다운)
+> - 멀티플레이 종료 시 Firestore 점수 저장 (MultiQuiz.tsx)
 > - Firestore 퀴즈 데이터 로드 (mockData 교체)
 > - Firebase Storage 음악 업로드 + MusicPlayer 연결
-> - 퀴즈 완료 시 점수 Firestore 저장
-> - 랭킹 Firestore 실데이터 연결
-> - Firebase RTDB 보안 규칙 강화 (현재 전체 공개 상태)
+> - RTDB / Firestore 보안 규칙 강화

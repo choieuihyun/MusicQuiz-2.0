@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { MOCK_QUESTIONS } from '../lib/mockQuizData'
 import type { QuizQuestion } from '../types/quiz'
 import MusicPlayer from '../components/MusicPlayer'
 import type { Track } from '../components/MusicPlayer'
+import { usePlayerStore } from '../store/playerStore'
+import { saveScore } from '../lib/firestore'
 
 const ERA_COLORS: Record<string, { from: string; to: string; rgb: string }> = {
   '2000s': { from: '#a855f7', to: '#6366f1', rgb: '168,85,247' },
@@ -45,6 +47,7 @@ export default function Quiz() {
   const { eraId = '2000s', partId = '1' } = useParams()
   const navigate = useNavigate()
   const era = ERA_COLORS[eraId] ?? ERA_COLORS['2000s']
+  const { sessionId, nickname } = usePlayerStore()
 
   // TODO: Firebase에서 eraId + partId 기준으로 문제 로드
   const questions: QuizQuestion[] = MOCK_QUESTIONS
@@ -63,6 +66,13 @@ export default function Quiz() {
   const [finished, setFinished] = useState(false)
   const [flash, setFlash] = useState<'correct' | 'wrong' | null>(null)
   const [showConfetti, setShowConfetti] = useState(false)
+
+  // 퀴즈 완료 시 점수 저장
+  useEffect(() => {
+    if (!finished || !nickname) return
+    saveScore(sessionId, nickname, eraId, partId, score, questions.length)
+      .catch(console.error)
+  }, [finished])
 
   const q = questions[current]
   const isCorrect = selected === q.correctId
