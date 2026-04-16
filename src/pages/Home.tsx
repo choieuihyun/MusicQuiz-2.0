@@ -2,42 +2,29 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { usePlayerStore } from '../store/playerStore'
 import { createRoom } from '../lib/realtimeDB'
+import { PARTS, partMeta } from '../lib/parts'
 
-const eras = [
-  { id: '2000s', range: '2000 – 2010', subtitle: '황금기 K-POP', tag: '00s', from: '#a855f7', to: '#6366f1', rgb: '168,85,247' },
-  { id: '2010s', range: '2010 – 2020', subtitle: '한류 전성시대', tag: '10s', from: '#22d3ee', to: '#3b82f6', rgb: '34,211,238' },
-  { id: '2020s', range: '2020 – 현재', subtitle: '지금 이 순간', tag: '20s', from: '#f472b6', to: '#f43f5e', rgb: '244,114,182' },
-]
-
-const PARTS = ['Part.1', 'Part.2', 'Part.3']
 const TIME_OPTIONS = [10, 15, 20, 30]
 
 export default function Home() {
   const navigate = useNavigate()
   const { sessionId, nickname, photoURL, setCurrentRoom } = usePlayerStore()
 
-  const [openId, setOpenId] = useState<string | null>(null)
-  const [selectedEraId, setSelectedEraId] = useState('')
   const [selectedPartId, setSelectedPartId] = useState('')
   const [selectedTime, setSelectedTime] = useState(15)
   const [loading, setLoading] = useState(false)
 
-  const selectedEra = eras.find(e => e.id === selectedEraId)
+  const selectedMeta = selectedPartId ? partMeta(selectedPartId) : null
 
   useEffect(() => {
     if (!nickname) navigate('/login')
   }, [nickname, navigate])
 
-  const handlePartSelect = (eraId: string, partIdx: number) => {
-    setSelectedEraId(eraId)
-    setSelectedPartId(String(partIdx + 1))
-  }
-
   const handleCreate = async () => {
-    if (!selectedEraId || !selectedPartId || loading) return
+    if (!selectedPartId || loading) return
     setLoading(true)
     try {
-      const roomCode = await createRoom(sessionId, nickname, selectedEraId, selectedPartId, selectedTime, photoURL)
+      const roomCode = await createRoom(sessionId, nickname, selectedPartId, selectedTime, photoURL)
       setCurrentRoom(roomCode)
       navigate(`/room/${roomCode}`)
     } catch {
@@ -50,10 +37,18 @@ export default function Home() {
       minHeight: '100svh',
       background: 'var(--bg-main)',
       fontFamily: 'var(--font-body)',
-      paddingBottom: selectedEraId && selectedPartId ? 190 : 52,
+      paddingBottom: selectedPartId ? 190 : 52,
       position: 'relative',
     }}>
       <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', background: 'var(--bg-accent)' }} />
+      {selectedMeta && (
+        <div style={{
+          position: 'fixed', top: 0, left: '50%', transform: 'translateX(-50%)',
+          width: '100%', height: 320, pointerEvents: 'none',
+          background: `radial-gradient(ellipse at 50% -20%, rgba(${selectedMeta.rgb},0.14) 0%, transparent 65%)`,
+          transition: 'background 0.4s ease',
+        }} />
+      )}
 
       {/* 헤더 */}
       <header className="header-enter" style={{ padding: '56px 20px 28px', position: 'relative' }}>
@@ -87,185 +82,104 @@ export default function Home() {
             fontSize: 11, fontWeight: 700, letterSpacing: '2px', textTransform: 'uppercase',
             color: 'rgba(255,255,255,0.3)',
           }}>
-            연대와 파트를 선택하세요
+            파트를 선택하세요
           </div>
         </div>
       </header>
 
-      {/* 연대 카드 목록 */}
+      {/* 파트 카드 목록 */}
       <main style={{ padding: '0 16px', display: 'flex', flexDirection: 'column', gap: 12, position: 'relative' }}>
-        {eras.map((era, eraIdx) => {
-          const isOpen = openId === era.id
-          const isSelectedEra = selectedEraId === era.id
-
+        {PARTS.map((part, idx) => {
+          const isSelected = selectedPartId === part.id
           return (
-            <div
-              key={era.id}
-              className={isOpen ? 'era-card-open' : ''}
+            <button
+              key={part.id}
+              onClick={() => setSelectedPartId(part.id)}
               style={{
-                borderRadius: 20, overflow: 'hidden',
-                background: isOpen
-                  ? `rgba(${era.rgb},0.07)`
+                width: '100%', textAlign: 'left', cursor: 'pointer',
+                border: `1px solid rgba(${part.rgb}, ${isSelected ? '0.45' : '0.15'})`,
+                borderLeft: `4px solid ${isSelected ? part.from : `rgba(${part.rgb},0.35)`}`,
+                borderRadius: 20, padding: '18px 20px',
+                background: isSelected
+                  ? `rgba(${part.rgb},0.1)`
                   : 'rgba(255,255,255,0.04)',
                 backdropFilter: 'blur(20px)',
-                border: `1px solid rgba(${era.rgb}, ${isOpen ? '0.35' : '0.12'})`,
-                borderLeft: `4px solid ${isOpen ? era.from : `rgba(${era.rgb},0.3)`}`,
-                boxShadow: isOpen
-                  ? `0 20px 60px rgba(0,0,0,0.6), 0 0 40px rgba(${era.rgb},0.15), inset 0 1px 0 rgba(255,255,255,0.08)`
-                  : `0 4px 20px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06)`,
-                transition: 'all 0.35s ease',
-                animationDelay: `${eraIdx * 0.5}s`,
+                boxShadow: isSelected
+                  ? `0 12px 36px rgba(0,0,0,0.5), 0 0 32px rgba(${part.rgb},0.22), inset 0 1px 0 rgba(255,255,255,0.08)`
+                  : `0 4px 20px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.05)`,
+                display: 'flex', alignItems: 'center', gap: 16,
+                transition: 'all 0.25s ease',
+                WebkitTapHighlightColor: 'transparent',
+                animation: `fadeSlideUp 0.5s ease ${idx * 0.06}s both`,
               }}
             >
-              {/* 헤더 버튼 */}
-              <button
-                onClick={() => setOpenId(isOpen ? null : era.id)}
+              {/* 파트 뱃지 */}
+              <div
+                className="era-badge"
                 style={{
-                  width: '100%', background: 'none', border: 'none', cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', gap: 16,
-                  padding: '18px 20px',
-                  WebkitTapHighlightColor: 'transparent', textAlign: 'left',
-                }}
-              >
-                {/* 연대 뱃지 */}
-                <div
-                  className="era-badge"
-                  style={{
-                    '--badge-glow': `rgba(${era.rgb},0.55)`,
-                    '--badge-glow-wide': `rgba(${era.rgb},0.2)`,
-                    width: 52, height: 52, borderRadius: 14, flexShrink: 0,
-                    background: `linear-gradient(145deg, ${era.from}, ${era.to})`,
-                    boxShadow: `0 4px 20px rgba(${era.rgb},0.5), inset 0 1px 0 rgba(255,255,255,0.25)`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  } as React.CSSProperties}
-                >
-                  <span style={{
-                    fontFamily: 'var(--font-number)',
-                    fontSize: 15, fontWeight: 900, color: '#fff', letterSpacing: '0.5px',
-                  }}>
-                    {era.tag}
-                  </span>
-                </div>
-
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{
-                    fontSize: 9, fontWeight: 700, letterSpacing: '2.5px',
-                    color: `rgba(${era.rgb},0.65)`, textTransform: 'uppercase', marginBottom: 4,
-                  }}>
-                    ERA
-                  </div>
-                  <div style={{
-                    fontFamily: 'var(--font-number)',
-                    fontSize: 20, fontWeight: 900, color: '#fff', letterSpacing: '-0.5px',
-                  }}>
-                    {era.range}
-                    {isSelectedEra && selectedPartId && (
-                      <span style={{
-                        fontFamily: 'var(--font-body)',
-                        fontSize: 12, fontWeight: 700, color: era.from, marginLeft: 10,
-                      }}>
-                        Part.{selectedPartId} ✓
-                      </span>
-                    )}
-                  </div>
-                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontWeight: 600 }}>
-                    {era.subtitle}
-                  </div>
-                </div>
-
-                <div style={{
-                  width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
-                  background: `rgba(${era.rgb},0.1)`,
-                  border: `1px solid rgba(${era.rgb},0.25)`,
+                  '--badge-glow': `rgba(${part.rgb},0.55)`,
+                  '--badge-glow-wide': `rgba(${part.rgb},0.2)`,
+                  width: 56, height: 56, borderRadius: 16, flexShrink: 0,
+                  background: `linear-gradient(145deg, ${part.from}, ${part.to})`,
+                  boxShadow: `0 6px 20px rgba(${part.rgb},0.5), inset 0 1px 0 rgba(255,255,255,0.28)`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: `rgba(${era.rgb},0.9)`,
-                  transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-                  transition: 'transform 0.3s cubic-bezier(0.4,0,0.2,1)',
+                } as React.CSSProperties}
+              >
+                <span style={{
+                  fontFamily: 'var(--font-number)',
+                  fontSize: 24, fontWeight: 900, color: '#fff', letterSpacing: '-0.5px',
                 }}>
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                    <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
+                  {part.id}
+                </span>
+              </div>
+
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{
+                  fontSize: 9, fontWeight: 700, letterSpacing: '2.5px',
+                  color: `rgba(${part.rgb},0.7)`, textTransform: 'uppercase', marginBottom: 4,
+                }}>
+                  PART
                 </div>
-              </button>
-
-              {/* 구분선 */}
-              <div style={{
-                height: 1, margin: '0 20px',
-                background: `linear-gradient(90deg, transparent, rgba(${era.rgb},0.4), transparent)`,
-                opacity: isOpen ? 1 : 0,
-                transition: 'opacity 0.3s ease',
-              }} />
-
-              {/* 파트 목록 */}
-              <div style={{
-                maxHeight: isOpen ? 280 : 0, overflow: 'hidden',
-                transition: 'max-height 0.42s cubic-bezier(0.4,0,0.2,1)',
-              }}>
-                <div style={{ padding: '12px 12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {PARTS.map((part, pIdx) => {
-                    const isSelectedPart = isSelectedEra && selectedPartId === String(pIdx + 1)
-                    return (
-                      <button
-                        key={part}
-                        onClick={() => handlePartSelect(era.id, pIdx)}
-                        style={{
-                          width: '100%',
-                          background: isSelectedPart
-                            ? `rgba(${era.rgb},0.18)`
-                            : `rgba(${era.rgb},0.06)`,
-                          border: isSelectedPart
-                            ? `1px solid rgba(${era.rgb},0.6)`
-                            : `1px solid rgba(${era.rgb},0.15)`,
-                          borderLeft: `3px solid ${isSelectedPart ? era.from : `rgba(${era.rgb},0.3)`}`,
-                          borderRadius: 14, padding: '13px 16px',
-                          display: 'flex', alignItems: 'center', gap: 14,
-                          cursor: 'pointer',
-                          WebkitTapHighlightColor: 'transparent', textAlign: 'left',
-                          boxShadow: isSelectedPart
-                            ? `0 4px 20px rgba(${era.rgb},0.2), inset 0 1px 0 rgba(255,255,255,0.08)`
-                            : 'none',
-                          opacity: isOpen ? 1 : 0,
-                          transform: isOpen ? 'translateY(0)' : 'translateY(-8px)',
-                          transition: `opacity 0.3s ease ${pIdx * 60}ms, transform 0.3s cubic-bezier(0.34,1.2,0.64,1) ${pIdx * 60}ms, background 0.2s, border-color 0.2s`,
-                        }}
-                      >
-                        <div style={{
-                          width: 32, height: 32, borderRadius: 9, flexShrink: 0,
-                          background: `linear-gradient(145deg, ${era.from}, ${era.to})`,
-                          boxShadow: `0 3px 12px rgba(${era.rgb},0.4)`,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontFamily: 'var(--font-number)',
-                          fontSize: 14, fontWeight: 900, color: '#fff',
-                        }}>
-                          {pIdx + 1}
-                        </div>
-                        <span style={{
-                          fontSize: 14, fontWeight: 700,
-                          color: isSelectedPart ? '#fff' : 'rgba(255,255,255,0.75)',
-                          flex: 1,
-                        }}>
-                          {part}
-                        </span>
-                        {isSelectedPart
-                          ? <span style={{ fontSize: 16, color: era.from }}>✓</span>
-                          : (
-                            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ opacity: 0.4 }}>
-                              <path d="M4 2l4 4-4 4" stroke={era.from} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                          )
-                        }
-                      </button>
-                    )
-                  })}
+                <div style={{
+                  fontFamily: 'var(--font-display)',
+                  fontSize: 22, color: '#fff', letterSpacing: '-0.5px',
+                }}>
+                  {part.label}
+                </div>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 2, fontWeight: 600 }}>
+                  {part.subtitle}
                 </div>
               </div>
-            </div>
+
+              {/* 체크 / 화살표 */}
+              <div style={{
+                width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+                background: isSelected
+                  ? `linear-gradient(135deg, ${part.from}, ${part.to})`
+                  : `rgba(${part.rgb},0.1)`,
+                border: `1px solid rgba(${part.rgb},${isSelected ? '0.5' : '0.25'})`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#fff',
+                boxShadow: isSelected ? `0 2px 12px rgba(${part.rgb},0.5)` : 'none',
+                transition: 'all 0.25s ease',
+              }}>
+                {isSelected ? (
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <path d="M3 7l3 3 5-6" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                ) : (
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ opacity: 0.8 }}>
+                    <path d="M4 2l4 4-4 4" stroke={part.from} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </div>
+            </button>
           )
         })}
       </main>
 
       {/* 하단 CTA */}
-      {selectedEra && selectedPartId && (
+      {selectedMeta && (
         <div style={{
           position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50,
           padding: '16px 18px 38px',
@@ -276,18 +190,18 @@ export default function Home() {
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             marginBottom: 12, padding: '10px 14px',
-            background: `rgba(${selectedEra.rgb},0.08)`,
-            border: `1px solid rgba(${selectedEra.rgb},0.2)`,
-            borderLeft: `3px solid ${selectedEra.from}`,
+            background: `rgba(${selectedMeta.rgb},0.08)`,
+            border: `1px solid rgba(${selectedMeta.rgb},0.2)`,
+            borderLeft: `3px solid ${selectedMeta.from}`,
             borderRadius: 14,
           }}>
             <span style={{
               fontFamily: 'var(--font-body)',
               fontSize: 13, fontWeight: 800, color: '#fff',
             }}>
-              <span style={{ color: selectedEra.from }}>{selectedEra.id}</span>
-              {' · '}
-              <span style={{ color: 'rgba(255,255,255,0.6)' }}>Part.{selectedPartId}</span>
+              <span style={{ color: selectedMeta.from }}>Part.{selectedPartId}</span>
+              <span style={{ color: 'rgba(255,255,255,0.3)', margin: '0 6px' }}>·</span>
+              <span style={{ color: 'rgba(255,255,255,0.6)' }}>{selectedMeta.label}</span>
             </span>
             <div style={{ display: 'flex', gap: 5 }}>
               {TIME_OPTIONS.map(t => (
@@ -297,13 +211,13 @@ export default function Home() {
                   style={{
                     padding: '5px 10px', borderRadius: 8, border: 'none',
                     background: selectedTime === t
-                      ? `linear-gradient(135deg, ${selectedEra.from}, ${selectedEra.to})`
+                      ? `linear-gradient(135deg, ${selectedMeta.from}, ${selectedMeta.to})`
                       : 'rgba(255,255,255,0.07)',
                     fontFamily: 'var(--font-number)',
                     fontSize: 13, fontWeight: 700,
                     color: selectedTime === t ? '#fff' : 'rgba(255,255,255,0.35)',
                     cursor: 'pointer',
-                    boxShadow: selectedTime === t ? `0 2px 10px rgba(${selectedEra.rgb},0.4)` : 'none',
+                    boxShadow: selectedTime === t ? `0 2px 10px rgba(${selectedMeta.rgb},0.4)` : 'none',
                     WebkitTapHighlightColor: 'transparent',
                   }}
                 >
@@ -319,8 +233,8 @@ export default function Home() {
             style={{
               width: '100%', padding: '17px',
               borderRadius: 16, border: 'none',
-              background: `linear-gradient(135deg, ${selectedEra.from}, ${selectedEra.to})`,
-              boxShadow: `0 8px 36px rgba(${selectedEra.rgb},0.5)`,
+              background: `linear-gradient(135deg, ${selectedMeta.from}, ${selectedMeta.to})`,
+              boxShadow: `0 8px 36px rgba(${selectedMeta.rgb},0.5)`,
               fontFamily: 'var(--font-display)',
               fontSize: 20, color: '#fff', letterSpacing: '0.5px',
               cursor: loading ? 'not-allowed' : 'pointer',

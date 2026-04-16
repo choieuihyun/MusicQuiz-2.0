@@ -316,7 +316,99 @@ Firebase 3개 서비스 역할 분담:
 - 미읽음 배지: 채팅 탭 외 상태에서 새 메시지 수신 시 드로어 토글 버튼 + 탭 버튼에 핑크 뱃지 노출
 - 채팅 탭 열 때 미읽음 카운트 초기화 + 스크롤 최하단 이동
 
+---
+
+## 2026-04-16 (2차)
+
+### 전체 구조 전환 — 연대 제거 + 4파트 체계
+
+**배경**: 기존 `연대(2000s/2010s/2020s) × 파트(1/2/3) = 9그룹` 구조를 **파트(1/2/3/4) = 4그룹**으로 단순화. MySQL 원본 SQL 50곡을 Part.1에 임포트하고 파트 2~4는 자리만 마련.
+
+**데이터 레이어**
+- `src/lib/parts.ts` 신규 — 4개 파트 메타데이터(id/label/subtitle/컬러) 단일 소스
+  - Part.1 OPENING (바이올렛) / Part.2 ENCORE (시안) / Part.3 SPOTLIGHT (핑크) / Part.4 FINALE (앰버)
+- `src/lib/realtimeDB.ts` — `Room` 인터페이스에서 `eraId` 제거, `createRoom` / `updateRoomSelection` 시그니처 간소화
+- `src/lib/firestore.ts`
+  - `ScoreEntry` / `saveScore` / `getPartRanking`에서 `eraId` 제거 — docId: `${sessionId}_${partId}`
+  - `getPartQuestions(partId)` 신규 — `quizzes/{partId}/questions` 서브컬렉션 로드
+- `src/types/quiz.ts` — `QuizSet`에서 `eraId` 제거
+
+**페이지 리팩토링**
+- `Home.tsx` — 연대 아코디언 제거, 4개 파트 카드 수직 배치 (accent bar + 뱃지 글로우)
+- `Rooms.tsx` — 방 카드 era 뱃지 → 파트 뱃지 (`Part.N` + 레이블)
+- `Room.tsx` — 배너에서 era 표기 제거, `Part.N · {label}` 형태로 변경
+- `Ranking.tsx` — 연대 탭 제거, 파트 4개 탭만 (P.1 ~ P.4)
+- `MultiQuiz.tsx`
+  - `MOCK_QUESTIONS` 제거 → `getPartQuestions(room.partId)`로 Firestore 로드
+  - `ERA_COLORS` 제거 → `partMeta(room.partId)` 사용
+  - 문제 없음 상태(`questionsLoaded && questions.length === 0`) 처리 — "준비 중" 화면 + 홈 버튼
+
+**미사용 파일 정리**
+- `src/pages/Quiz.tsx`, `src/pages/Lobby.tsx` 삭제
+- `src/lib/mockQuizData.ts`, `src/lib/mockRankingData.ts`, `src/lib/testRTDB.ts` 삭제
+- `src/main.tsx`에서 `testRTDB` 디버그 연결 제거
+
+### Firestore 퀴즈 데이터 임포트 스크립트
+
+`scripts/importQuiz.mjs` 신규:
+- `.env.local`에서 `VITE_FIREBASE_*` 환경변수 수동 파싱
+- Firebase 클라이언트 SDK로 `quizzes/1/questions/{songId}`에 50곡 업로드
+- 원본 MySQL 50곡 데이터를 `QuizQuestion` 형식으로 변환 (answer → correctId 매핑 포함)
+- 실행: `bun run scripts/importQuiz.mjs`
+
+### 프로필 사진 업로드 에러 수정
+- 원인: Firebase Storage 보안 규칙 만료 (2024-12-15 기반 조건문)
+- Storage Rules를 `allow read, write: if true` (개발용)로 교체하도록 안내
+- `Login.tsx` — 업로드 실패 시 원인 로그(`storage/unauthorized` 등) 표시
+
+### 채팅 본인 판정 로직 변경
+- `isMe = data.sessionId === sessionId` → `data.displayName === nickname`
+- 이유: sessionId는 localStorage persist라 같은 브라우저에서 닉네임만 바꿔 재로그인 해도 값이 동일 → 테스트할 때 전부 "내 메시지"로 표시되는 문제
+- 닉네임은 RTDB 트랜잭션으로 고유성 보장되므로 동일하게 안전
+
+### 문서 업데이트
+- `ARCHITECTURE.md`, `CLAUDE.md` — 연대 → 4파트 전환 반영, 폴더 구조 및 Firestore 구조 업데이트
+- `DEVLOG.md` — 현재 항목
+
+---
+
+---
+
+## 2026-04-16 (3차)
+
+### Firestore Native 모드 전환 — Named Database `musicquizdb`
+
+**문제**
+- 임포트 스크립트 실행 시 에러: `FAILED_PRECONDITION: The Cloud Firestore API is not available for Firestore in Datastore Mode database`
+- 원인: 기존 `(default)` 데이터베이스가 **Datastore 모드**로 생성되어 있어 Firebase Client SDK가 연결 불가
+- Datastore ↔ Native 모드는 **전환 불가** → 삭제 후 재생성 필요
+
+**조치**
+- Google Cloud Console에서 기존 `(default)` 데이터베이스 삭제
+- Firebase 콘솔에서 **Native 모드**로 새 데이터베이스 생성
+- 데이터베이스 이름을 `musicquizdb` 로 지정 (기본 `(default)` 아님)
+- 개발용 보안 규칙: `allow read, write: if request.time < timestamp.date(2026, 12, 16)`
+
+**코드 수정**
+- `src/lib/firebase.ts` — `getFirestore(app)` → `getFirestore(app, 'musicquizdb')` 로 변경
+- `scripts/importQuiz.mjs` — 동일하게 변경
+- `ARCHITECTURE.md` — Firestore 섹션에 데이터베이스 이름 명시
+
+### 부차 이슈
+
+**Firestore rules 만료 조건 관련**
+- Firestore 신규 DB 생성 시 기본 규칙이 `request.time < timestamp.date(YYYY, MM, DD)` 형태로 30일 만료
+- 현재 설정: 2026-12-16 만료 (약 8개월) — 개발 기간 충분
+
+**로컬 네트워크 멀티플레이 테스트 방법 안내**
+- Vite `bun run dev --host` 로 LAN 접속 가능
+- 외부 테스트는 `ngrok http 5173` 권장 (HTTPS 제공)
+
+---
+
 > 다음 작업 예정
-> - Firestore 퀴즈 데이터 로드 (mockData 교체)
+> - Firestore `musicquizdb`에 Part.1 50곡 업로드 실행 (`bun run scripts/importQuiz.mjs`)
+> - 랭킹 첫 조회 시 복합 인덱스 생성 (`partId + score desc`)
+> - Part.2 / Part.3 / Part.4 문제 데이터 추가
 > - Firebase Storage 음악 업로드 + MusicPlayer 연결
 > - Security Rules 설정 (RTDB + Firestore + Storage)

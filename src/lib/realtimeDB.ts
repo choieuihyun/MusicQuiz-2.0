@@ -28,7 +28,6 @@ export interface Room {
   roomCode: string
   hostId: string
   hostName: string
-  eraId: string
   partId: string
   status: 'waiting' | 'playing' | 'result' | 'finished'
   currentQuestion: number
@@ -42,7 +41,6 @@ export interface Room {
 export async function createRoom(
   hostId: string,
   hostName: string,
-  eraId: string = '',
   partId: string = '',
   timeLimit: number = 15,
   photoURL: string = ''
@@ -54,14 +52,13 @@ export async function createRoom(
   const snapshot = await get(roomRef)
   if (snapshot.exists()) {
     // 재귀로 다시 생성 (충돌 시)
-    return createRoom(hostId, hostName, eraId, partId, timeLimit, photoURL)
+    return createRoom(hostId, hostName, partId, timeLimit, photoURL)
   }
 
   const room: Room = {
     roomCode,
     hostId,
     hostName,
-    eraId,
     partId,
     status: 'waiting',
     currentQuestion: 0,
@@ -253,14 +250,13 @@ export async function releaseNickname(nickname: string): Promise<void> {
   await remove(nicknameRef)
 }
 
-// 연대/파트 선택 업데이트 (호스트만)
+// 파트 선택 업데이트 (호스트만)
 export async function updateRoomSelection(
   roomCode: string,
-  eraId: string,
   partId: string
 ): Promise<void> {
   const roomRef = ref(rtdb, `rooms/${roomCode}`)
-  await update(roomRef, { eraId, partId })
+  await update(roomRef, { partId })
 }
 
 // 재촉 보내기

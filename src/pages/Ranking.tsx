@@ -2,32 +2,25 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getPartRanking } from '../lib/firestore'
 import type { ScoreEntry } from '../lib/firestore'
+import { PARTS, partMeta } from '../lib/parts'
 
-const ERAS = [
-  { id: '2000s', label: '2000s', tag: '00s', from: '#a855f7', to: '#6366f1', rgb: '168,85,247' },
-  { id: '2010s', label: '2010s', tag: '10s', from: '#22d3ee', to: '#3b82f6', rgb: '34,211,238' },
-  { id: '2020s', label: '2020s', tag: '20s', from: '#f472b6', to: '#f43f5e', rgb: '244,114,182' },
-]
-
-const PARTS = ['1', '2', '3']
 const RANK_MEDALS: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' }
 
 export default function Ranking() {
   const navigate = useNavigate()
-  const [selectedEra, setSelectedEra] = useState('2000s')
   const [selectedPart, setSelectedPart] = useState('1')
   const [entries, setEntries] = useState<ScoreEntry[]>([])
   const [loading, setLoading] = useState(false)
 
-  const era = ERAS.find(e => e.id === selectedEra)!
+  const meta = partMeta(selectedPart)
 
   useEffect(() => {
     setLoading(true)
-    getPartRanking(selectedEra, selectedPart)
+    getPartRanking(selectedPart)
       .then(setEntries)
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [selectedEra, selectedPart])
+  }, [selectedPart])
 
   return (
     <div style={{
@@ -36,24 +29,25 @@ export default function Ranking() {
       fontFamily: 'var(--font-body)',
       position: 'relative',
     }}>
-      {/* 배경 광원 */}
       <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', background: 'var(--bg-accent)' }} />
+      {/* 배경 광원 */}
       <div style={{
-        position: 'fixed', top: 0, right: 0, width: 400, height: 400, pointerEvents: 'none',
-        background: `radial-gradient(ellipse at 100% 0%, rgba(${era.rgb},0.1) 0%, transparent 60%)`,
+        position: 'fixed', inset: 0, pointerEvents: 'none',
+        background: `radial-gradient(ellipse at 80% 10%, rgba(${meta.rgb},0.12) 0%, transparent 55%)`,
         transition: 'background 0.5s ease',
       }} />
 
       {/* 헤더 */}
-      <header style={{ padding: '56px 18px 24px', position: 'relative' }}>
+      <header style={{ padding: '56px 20px 24px', position: 'relative' }}>
         <button
           onClick={() => navigate('/')}
           style={{
+            position: 'absolute', top: 20, left: 20,
             background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
             borderRadius: 12, padding: '8px 14px', cursor: 'pointer',
             display: 'inline-flex', alignItems: 'center', gap: 6,
             color: 'rgba(255,255,255,0.45)', fontSize: 12, fontWeight: 700,
-            marginBottom: 24, WebkitTapHighlightColor: 'transparent',
+            WebkitTapHighlightColor: 'transparent', letterSpacing: '0.5px',
           }}
         >
           <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
@@ -62,107 +56,84 @@ export default function Ranking() {
           홈
         </button>
 
-        <div style={{ textAlign: 'center' }}>
+        <div style={{ textAlign: 'center', paddingTop: 8 }}>
           <div style={{
-            fontSize: 44, lineHeight: 1, marginBottom: 12,
-            filter: `drop-shadow(0 0 24px rgba(${era.rgb},0.7))`,
+            fontSize: 50, lineHeight: 1, marginBottom: 10,
+            filter: `drop-shadow(0 0 24px rgba(${meta.rgb},0.65))`,
             transition: 'filter 0.4s ease',
           }}>
             🏆
           </div>
-          <div style={{
-            fontFamily: 'var(--font-display)',
-            fontSize: 40, color: '#fff', letterSpacing: '-1px', lineHeight: 1,
-            textShadow: `0 0 60px rgba(${era.rgb},0.4)`,
-            transition: 'text-shadow 0.4s ease',
-            marginBottom: 8,
+          <h1 style={{
+            margin: 0, fontSize: 34, fontFamily: 'var(--font-display)',
+            color: '#fff', letterSpacing: '-0.5px',
+            textShadow: `0 0 50px rgba(${meta.rgb},0.4)`,
           }}>
             랭킹
-          </div>
-          <div style={{
-            fontSize: 11, fontWeight: 700, letterSpacing: '3px', textTransform: 'uppercase',
+          </h1>
+          <p style={{
+            margin: '6px 0 0',
+            fontSize: 11, fontWeight: 700, letterSpacing: '2px', textTransform: 'uppercase',
             color: 'rgba(255,255,255,0.3)',
           }}>
             파트별 TOP 랭킹
-          </div>
+          </p>
         </div>
       </header>
 
       <main style={{ padding: '0 16px 52px', position: 'relative' }}>
 
-        {/* 연대 탭 */}
+        {/* 파트 탭 */}
         <div style={{
-          display: 'flex', gap: 6, marginBottom: 14,
+          display: 'flex', gap: 6, marginBottom: 22,
           background: 'rgba(255,255,255,0.04)',
-          border: '1px solid rgba(255,255,255,0.07)',
+          border: '1px solid rgba(255,255,255,0.08)',
           borderRadius: 18, padding: 5,
         }}>
-          {ERAS.map(e => {
-            const isActive = selectedEra === e.id
-            return (
-              <button
-                key={e.id}
-                onClick={() => setSelectedEra(e.id)}
-                style={{
-                  flex: 1, padding: '10px 0', borderRadius: 12, border: 'none',
-                  cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
-                  background: isActive ? `linear-gradient(135deg, ${e.from}, ${e.to})` : 'transparent',
-                  fontFamily: isActive ? 'var(--font-number)' : 'var(--font-body)',
-                  fontSize: 13, fontWeight: 700,
-                  color: isActive ? '#fff' : 'rgba(255,255,255,0.3)',
-                  boxShadow: isActive ? `0 4px 18px rgba(${e.rgb},0.45)` : 'none',
-                  letterSpacing: isActive ? '0.5px' : '0',
-                  transition: 'all 0.22s ease',
-                }}
-              >
-                {e.label}
-              </button>
-            )
-          })}
-        </div>
-
-        {/* 파트 탭 */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
           {PARTS.map(p => {
-            const isActive = selectedPart === p
+            const isActive = selectedPart === p.id
             return (
               <button
-                key={p}
-                onClick={() => setSelectedPart(p)}
+                key={p.id}
+                onClick={() => setSelectedPart(p.id)}
                 style={{
-                  flex: 1, padding: '9px 0', borderRadius: 12,
-                  cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
-                  background: isActive ? `rgba(${era.rgb},0.16)` : 'rgba(255,255,255,0.04)',
-                  color: isActive ? era.from : 'rgba(255,255,255,0.28)',
-                  border: `1px solid ${isActive ? `rgba(${era.rgb},0.45)` : 'rgba(255,255,255,0.07)'}`,
-                  borderLeft: isActive ? `3px solid ${era.from}` : '3px solid transparent',
-                  fontSize: 12, fontWeight: 700, letterSpacing: '0.5px',
-                  boxShadow: isActive ? `0 0 20px rgba(${era.rgb},0.18)` : 'none',
-                  transition: 'all 0.22s ease',
+                  flex: 1, padding: '10px 0', borderRadius: 13, border: 'none',
+                  cursor: 'pointer',
+                  fontFamily: 'var(--font-number)',
+                  fontSize: 14, fontWeight: 800, letterSpacing: '0.5px',
+                  WebkitTapHighlightColor: 'transparent',
+                  background: isActive
+                    ? `linear-gradient(135deg, ${p.from}, ${p.to})`
+                    : 'transparent',
+                  color: isActive ? '#fff' : 'rgba(255,255,255,0.35)',
+                  boxShadow: isActive ? `0 4px 16px rgba(${p.rgb},0.4)` : 'none',
+                  transition: 'all 0.25s ease',
                 }}
               >
-                Part.{p}
+                P.{p.id}
               </button>
             )
           })}
         </div>
 
         {/* 랭킹 리스트 */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {loading ? (
             <div style={{
-              textAlign: 'center', padding: '64px 0',
-              fontFamily: 'var(--font-display)',
-              fontSize: 18, color: 'rgba(255,255,255,0.2)', letterSpacing: '1px',
+              textAlign: 'center', padding: '60px 0',
+              color: 'rgba(255,255,255,0.25)', fontSize: 13, fontWeight: 700, letterSpacing: '1px',
             }}>
               불러오는 중...
             </div>
           ) : entries.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '64px 0' }}>
-              <div style={{ fontSize: 40, marginBottom: 14, opacity: 0.4 }}>🎵</div>
+            <div style={{
+              textAlign: 'center', padding: '60px 0',
+              color: 'rgba(255,255,255,0.25)',
+            }}>
+              <div style={{ fontSize: 36, marginBottom: 12, opacity: 0.6 }}>🎵</div>
               <div style={{
                 fontFamily: 'var(--font-display)',
-                fontSize: 18, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.5px',
+                fontSize: 18, color: 'rgba(255,255,255,0.4)',
               }}>
                 아직 기록이 없어요
               </div>
@@ -179,39 +150,42 @@ export default function Ranking() {
                   style={{
                     borderRadius: 18,
                     background: isTop3
-                      ? `rgba(${era.rgb},0.09)`
+                      ? `linear-gradient(135deg, rgba(${meta.rgb},0.12), rgba(${meta.rgb},0.04))`
                       : 'rgba(255,255,255,0.04)',
-                    border: `1px solid ${isTop3 ? `rgba(${era.rgb},0.22)` : 'rgba(255,255,255,0.06)'}`,
-                    borderLeft: isTop3 ? `4px solid ${era.from}` : '4px solid transparent',
-                    padding: '14px 16px',
-                    display: 'flex', alignItems: 'center', gap: 12,
+                    border: `1px solid ${isTop3 ? `rgba(${meta.rgb},0.3)` : 'rgba(255,255,255,0.07)'}`,
+                    borderLeft: `4px solid ${isTop3 ? meta.from : 'rgba(255,255,255,0.1)'}`,
+                    padding: '14px 18px',
+                    display: 'flex', alignItems: 'center', gap: 14,
                     boxShadow: isTop3
-                      ? `0 4px 24px rgba(${era.rgb},0.1), inset 0 1px 0 rgba(255,255,255,0.07)`
-                      : 'none',
+                      ? `inset 0 1px 0 rgba(255,255,255,0.08), 0 6px 22px rgba(${meta.rgb},0.14)`
+                      : 'inset 0 1px 0 rgba(255,255,255,0.05)',
                   }}
                 >
                   {/* 순위 */}
                   <div style={{
-                    width: 30, flexShrink: 0,
+                    width: 40, height: 40, borderRadius: 12, flexShrink: 0,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontFamily: 'var(--font-number)',
-                    fontSize: isTop3 ? 22 : 14, fontWeight: 900,
-                    color: isTop3 ? '#fff' : 'rgba(255,255,255,0.25)',
+                    background: isTop3
+                      ? `linear-gradient(145deg, ${meta.from}, ${meta.to})`
+                      : 'rgba(255,255,255,0.07)',
+                    boxShadow: isTop3 ? `0 3px 12px rgba(${meta.rgb},0.4)` : 'none',
+                    fontSize: isTop3 ? 20 : 14,
+                    fontFamily: isTop3 ? undefined : 'var(--font-number)',
+                    fontWeight: 900,
+                    color: isTop3 ? '#fff' : 'rgba(255,255,255,0.3)',
                   }}>
                     {RANK_MEDALS[rank] ?? rank}
                   </div>
 
-                  {/* 아바타 */}
+                  {/* 프로필 아바타 */}
                   <div style={{
-                    width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
-                    background: entry.photoURL
-                      ? 'transparent'
-                      : (isTop3 ? `linear-gradient(135deg, ${era.from}, ${era.to})` : 'rgba(255,255,255,0.07)'),
-                    border: `2px solid ${isTop3 ? `rgba(${era.rgb},0.5)` : 'rgba(255,255,255,0.09)'}`,
-                    boxShadow: isTop3 ? `0 0 14px rgba(${era.rgb},0.4)` : 'none',
+                    width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
+                    background: entry.photoURL ? 'transparent' : 'rgba(255,255,255,0.08)',
+                    border: `2px solid ${isTop3 ? `rgba(${meta.rgb},0.4)` : 'rgba(255,255,255,0.1)'}`,
                     overflow: 'hidden',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 18,
+                    fontSize: 15,
+                    boxShadow: isTop3 ? `0 0 12px rgba(${meta.rgb},0.35)` : 'none',
                   }}>
                     {entry.photoURL
                       ? <img src={entry.photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -223,8 +197,8 @@ export default function Ranking() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                       <span style={{
-                        fontSize: 14, fontWeight: 800,
-                        color: isTop3 ? '#fff' : 'rgba(255,255,255,0.65)',
+                        fontSize: 15, fontWeight: 800,
+                        color: isTop3 ? '#fff' : 'rgba(255,255,255,0.7)',
                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                       }}>
                         {entry.nickname}
@@ -232,22 +206,24 @@ export default function Ranking() {
                       <span style={{
                         fontFamily: 'var(--font-number)',
                         fontSize: 15, fontWeight: 900, flexShrink: 0, marginLeft: 8,
-                        color: isTop3 ? era.from : 'rgba(255,255,255,0.35)',
-                        letterSpacing: '0.5px',
+                        color: isTop3 ? meta.from : 'rgba(255,255,255,0.45)',
                       }}>
                         {entry.score}
-                        <span style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.25)' }}>
+                        <span style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.3)' }}>
                           /{entry.total}
                         </span>
                       </span>
                     </div>
-                    <div style={{ height: 3, background: 'rgba(255,255,255,0.07)', borderRadius: 100, overflow: 'hidden' }}>
+
+                    {/* 점수 바 */}
+                    <div style={{ height: 4, background: 'rgba(255,255,255,0.07)', borderRadius: 100, overflow: 'hidden' }}>
                       <div style={{
-                        height: '100%', borderRadius: 100, width: `${pct}%`,
+                        height: '100%', borderRadius: 100,
+                        width: `${pct}%`,
                         background: isTop3
-                          ? `linear-gradient(90deg, ${era.from}, ${era.to})`
-                          : 'rgba(255,255,255,0.18)',
-                        boxShadow: isTop3 ? `0 0 8px rgba(${era.rgb},0.5)` : 'none',
+                          ? `linear-gradient(90deg, ${meta.from}, ${meta.to})`
+                          : 'rgba(255,255,255,0.2)',
+                        boxShadow: isTop3 ? `0 0 8px rgba(${meta.rgb},0.5)` : 'none',
                       }} />
                     </div>
                   </div>
@@ -256,8 +232,8 @@ export default function Ranking() {
                   <div style={{
                     flexShrink: 0,
                     fontFamily: 'var(--font-number)',
-                    fontSize: 13, fontWeight: 700,
-                    color: isTop3 ? `rgba(${era.rgb},0.9)` : 'rgba(255,255,255,0.2)',
+                    fontSize: 14, fontWeight: 800,
+                    color: isTop3 ? `rgba(${meta.rgb},0.95)` : 'rgba(255,255,255,0.25)',
                     letterSpacing: '0.5px',
                   }}>
                     {pct}%

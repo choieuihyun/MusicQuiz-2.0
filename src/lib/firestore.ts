@@ -1,14 +1,14 @@
 import { db } from './firebase'
 import {
-  collection, doc, setDoc,
-  query, where, orderBy, limit, getDocs,
+  collection, doc, setDoc, getDoc, getDocs,
+  query, where, orderBy, limit,
 } from 'firebase/firestore'
+import type { QuizQuestion } from '../types/quiz'
 
 export interface ScoreEntry {
   sessionId: string
   nickname: string
   photoURL?: string
-  eraId: string
   partId: string
   score: number
   total: number
@@ -19,30 +19,24 @@ export interface ScoreEntry {
 export async function saveScore(
   sessionId: string,
   nickname: string,
-  eraId: string,
   partId: string,
   score: number,
   total: number,
   photoURL: string = ''
 ): Promise<void> {
-  const docId = `${sessionId}_${eraId}_${partId}`
+  const docId = `${sessionId}_${partId}`
   const docRef = doc(db, 'scores', docId)
 
-  // 기존 점수보다 높을 때만 업데이트
-  const existing = await getDocs(
-    query(collection(db, 'scores'), where('sessionId', '==', sessionId), where('eraId', '==', eraId), where('partId', '==', partId))
-  )
-
-  if (!existing.empty) {
-    const prev = existing.docs[0].data() as ScoreEntry
-    if (prev.score >= score) return // 기존 점수가 더 높으면 저장 안 함
+  const existing = await getDoc(docRef)
+  if (existing.exists()) {
+    const prev = existing.data() as ScoreEntry
+    if (prev.score >= score) return
   }
 
   await setDoc(docRef, {
     sessionId,
     nickname,
     photoURL,
-    eraId,
     partId,
     score,
     total,
@@ -53,17 +47,21 @@ export async function saveScore(
 // 파트별 랭킹 조회 (상위 10명)
 // ※ 첫 실행 시 Firestore 복합 인덱스 생성 필요 — 콘솔 에러 링크 클릭
 export async function getPartRanking(
-  eraId: string,
   partId: string,
   limitCount = 10
 ): Promise<ScoreEntry[]> {
   const q = query(
     collection(db, 'scores'),
-    where('eraId', '==', eraId),
     where('partId', '==', partId),
     orderBy('score', 'desc'),
     limit(limitCount)
   )
   const snapshot = await getDocs(q)
   return snapshot.docs.map(d => d.data() as ScoreEntry)
+}
+
+// 파트별 퀴즈 문제 로드
+export async function getPartQuestions(partId: string): Promise<QuizQuestion[]> {
+  const snapshot = await getDocs(collection(db, 'quizzes', partId, 'questions'))
+  return snapshot.docs.map(d => d.data() as QuizQuestion)
 }

@@ -3,12 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { usePlayerStore } from '../store/playerStore'
 import { subscribeToRoom, leaveRoom, startGame, sendChatMessage, subscribeToChatMessages, subscribeToBubbles } from '../lib/realtimeDB'
 import type { Room as RoomType, ChatMessage, Bubble } from '../lib/realtimeDB'
-
-const ERA_META: Record<string, { from: string; to: string; rgb: string; label: string }> = {
-  '2000s': { from: '#a855f7', to: '#6366f1', rgb: '168,85,247', label: '황금기 K-POP' },
-  '2010s': { from: '#22d3ee', to: '#3b82f6', rgb: '34,211,238', label: '한류 전성시대' },
-  '2020s': { from: '#f472b6', to: '#f43f5e', rgb: '244,114,182', label: '지금 이 순간' },
-}
+import { partMeta } from '../lib/parts'
 
 function formatTime(ts: number): string {
   const d = new Date(ts)
@@ -28,7 +23,6 @@ export default function Room() {
 
   const isHost = room?.hostId === sessionId
   const players = room ? Object.entries(room.players ?? {}) : []
-  const era = room ? ERA_META[room.eraId] : null
 
   // 1초 tick — 말풍선 자동 소멸용
   useEffect(() => {
@@ -118,8 +112,9 @@ export default function Room() {
     )
   }
 
-  const accentColor = era?.from ?? '#a855f7'
-  const accentRgb = era?.rgb ?? '168,85,247'
+  const meta = partMeta(room.partId)
+  const accentColor = meta.from
+  const accentRgb = meta.rgb
 
   return (
     <div style={{
@@ -130,13 +125,11 @@ export default function Room() {
       position: 'relative',
     }}>
       <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', background: 'var(--bg-accent)' }} />
-      {era && (
-        <div style={{
-          position: 'fixed', top: 0, left: '50%', transform: 'translateX(-50%)',
-          width: '100%', height: 300, pointerEvents: 'none',
-          background: `radial-gradient(ellipse at 50% -20%, rgba(${era.rgb},0.12) 0%, transparent 65%)`,
-        }} />
-      )}
+      <div style={{
+        position: 'fixed', top: 0, left: '50%', transform: 'translateX(-50%)',
+        width: '100%', height: 300, pointerEvents: 'none',
+        background: `radial-gradient(ellipse at 50% -20%, rgba(${meta.rgb},0.12) 0%, transparent 65%)`,
+      }} />
 
       {/* 헤더 */}
       <header style={{ padding: '56px 20px 20px', position: 'relative' }}>
@@ -187,46 +180,47 @@ export default function Room() {
         </div>
       </header>
 
-      {/* 선택된 시대/파트 배너 */}
-      {era && room.partId && (
+      {/* 선택된 파트 배너 */}
+      {room.partId && (
         <div style={{ padding: '0 18px 20px' }}>
           <div style={{
             padding: '16px 18px',
-            background: `rgba(${era.rgb},0.08)`,
-            border: `1px solid rgba(${era.rgb},0.25)`,
-            borderLeft: `4px solid ${era.from}`,
+            background: `rgba(${meta.rgb},0.08)`,
+            border: `1px solid rgba(${meta.rgb},0.25)`,
+            borderLeft: `4px solid ${meta.from}`,
             borderRadius: 18,
-            boxShadow: `0 4px 24px rgba(${era.rgb},0.12), inset 0 1px 0 rgba(255,255,255,0.06)`,
+            boxShadow: `0 4px 24px rgba(${meta.rgb},0.12), inset 0 1px 0 rgba(255,255,255,0.06)`,
             display: 'flex', alignItems: 'center', gap: 14,
           }}>
             <div style={{
               width: 44, height: 44, borderRadius: 12, flexShrink: 0,
-              background: `linear-gradient(135deg, ${era.from}, ${era.to})`,
-              boxShadow: `0 4px 16px rgba(${era.rgb},0.5)`,
+              background: `linear-gradient(135deg, ${meta.from}, ${meta.to})`,
+              boxShadow: `0 4px 16px rgba(${meta.rgb},0.5)`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 20,
+              fontFamily: 'var(--font-number)',
+              fontSize: 22, fontWeight: 900, color: '#fff',
             }}>
-              🎵
+              {room.partId}
             </div>
             <div style={{ flex: 1 }}>
               <div style={{
                 fontSize: 9, fontWeight: 700, letterSpacing: '2.5px',
-                color: `rgba(${era.rgb},0.65)`, textTransform: 'uppercase', marginBottom: 4,
+                color: `rgba(${meta.rgb},0.65)`, textTransform: 'uppercase', marginBottom: 4,
               }}>
                 선택된 퀴즈
               </div>
               <div style={{
-                fontFamily: 'var(--font-number)',
-                fontSize: 18, fontWeight: 900, color: '#fff', letterSpacing: '-0.5px',
+                fontFamily: 'var(--font-display)',
+                fontSize: 20, color: '#fff', letterSpacing: '-0.5px',
               }}>
-                <span style={{ color: era.from }}>{room.eraId}</span>
+                <span style={{ color: meta.from }}>Part.{room.partId}</span>
                 <span style={{ color: 'rgba(255,255,255,0.3)', margin: '0 6px' }}>·</span>
-                Part.{room.partId}
+                <span style={{ color: 'rgba(255,255,255,0.85)' }}>{meta.label}</span>
               </div>
               <div style={{
                 fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.3)', marginTop: 2,
               }}>
-                {era.label} · {room.timeLimit}초 제한
+                {meta.subtitle} · {room.timeLimit}초 제한
               </div>
             </div>
           </div>
@@ -353,7 +347,7 @@ export default function Room() {
             </div>
           ) : (
             chatMessages.map(({ id, data }) => {
-              const isMe = data.sessionId === sessionId
+              const isMe = data.displayName === nickname
               return (
                 <div key={id} style={{
                   display: 'flex',
@@ -488,12 +482,8 @@ export default function Room() {
             style={{
               width: '100%', padding: '17px',
               borderRadius: 16, border: 'none',
-              background: era
-                ? `linear-gradient(135deg, ${era.from}, ${era.to})`
-                : 'linear-gradient(135deg, #a855f7, #6366f1)',
-              boxShadow: era
-                ? `0 8px 36px rgba(${era.rgb},0.5)`
-                : '0 8px 36px rgba(168,85,247,0.5)',
+              background: `linear-gradient(135deg, ${meta.from}, ${meta.to})`,
+              boxShadow: `0 8px 36px rgba(${meta.rgb},0.5)`,
               fontFamily: 'var(--font-display)',
               fontSize: 20, color: '#fff', letterSpacing: '0.5px',
               cursor: 'pointer', WebkitTapHighlightColor: 'transparent',

@@ -13,7 +13,6 @@ export interface QuizQuestion {
 }
 
 export interface QuizSet {
-  eraId: string
   partId: string
   questions: QuizQuestion[]
 }

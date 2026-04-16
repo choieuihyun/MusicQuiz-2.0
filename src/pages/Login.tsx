@@ -51,16 +51,24 @@ export default function Login() {
 
       let url = ''
       if (photoFile) {
-        const fileRef = storageRef(storage, `profiles/${sessionId}`)
-        await uploadBytes(fileRef, photoFile)
-        url = await getDownloadURL(fileRef)
+        try {
+          const fileRef = storageRef(storage, `profiles/${sessionId}`)
+          await uploadBytes(fileRef, photoFile)
+          url = await getDownloadURL(fileRef)
+          console.log('[프로필 업로드 성공]', url)
+        } catch (uploadErr) {
+          console.error('[프로필 업로드 실패]', uploadErr)
+          setError('프로필 사진 업로드에 실패했어요 (Storage 규칙 확인)')
+          return
+        }
       }
 
       setAdmin(showAdmin)
       setNickname(trimmed)
       setPhotoURL(url)
       navigate('/')
-    } catch {
+    } catch (err) {
+      console.error('[로그인 에러]', err)
       setError('서버 오류가 발생했습니다')
     } finally {
       setLoading(false)

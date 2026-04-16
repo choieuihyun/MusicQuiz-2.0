@@ -3,13 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { usePlayerStore } from '../store/playerStore'
 import { joinRoom, deleteRoom, subscribeToRooms } from '../lib/realtimeDB'
 import type { Room } from '../lib/realtimeDB'
-
-const ERA_COLORS: Record<string, { from: string; to: string; rgb: string }> = {
-  '2000s': { from: '#a855f7', to: '#6366f1', rgb: '168,85,247' },
-  '2010s': { from: '#22d3ee', to: '#3b82f6', rgb: '34,211,238' },
-  '2020s': { from: '#f472b6', to: '#f43f5e', rgb: '244,114,182' },
-  '':      { from: 'rgba(255,255,255,0.35)', to: 'rgba(255,255,255,0.2)', rgb: '255,255,255' },
-}
+import { partMeta } from '../lib/parts'
 
 export default function Rooms() {
   const navigate = useNavigate()
@@ -141,8 +135,8 @@ export default function Rooms() {
             {waitingRooms.map(([roomCode, room]) => {
               const playerCount = Object.keys(room.players ?? {}).length
               const isJoining = joiningCode === roomCode
-              const eraColor = ERA_COLORS[room.eraId] ?? ERA_COLORS['']
-              const hasSelection = !!(room.eraId && room.partId)
+              const meta = partMeta(room.partId)
+              const hasSelection = !!room.partId
 
               return (
                 <div key={roomCode} style={{ position: 'relative' }}>
@@ -152,11 +146,11 @@ export default function Rooms() {
                     style={{
                       width: '100%',
                       background: hasSelection
-                        ? `rgba(${eraColor.rgb},0.06)`
+                        ? `rgba(${meta.rgb},0.06)`
                         : 'rgba(255,255,255,0.04)',
                       backdropFilter: 'blur(16px)',
-                      border: `1px solid rgba(${eraColor.rgb},0.18)`,
-                      borderLeft: `4px solid ${hasSelection ? eraColor.from : 'rgba(255,255,255,0.15)'}`,
+                      border: `1px solid rgba(${meta.rgb},0.18)`,
+                      borderLeft: `4px solid ${hasSelection ? meta.from : 'rgba(255,255,255,0.15)'}`,
                       borderRadius: 18, padding: '0',
                       cursor: joiningCode ? 'not-allowed' : 'pointer',
                       textAlign: 'left',
@@ -172,9 +166,9 @@ export default function Rooms() {
                       <div style={{
                         width: 48, height: 48, borderRadius: 13, fontSize: 20, flexShrink: 0,
                         background: hasSelection
-                          ? `linear-gradient(135deg, rgba(${eraColor.rgb},0.3), rgba(${eraColor.rgb},0.1))`
+                          ? `linear-gradient(135deg, rgba(${meta.rgb},0.3), rgba(${meta.rgb},0.1))`
                           : 'rgba(255,255,255,0.07)',
-                        border: `1px solid rgba(${eraColor.rgb},0.25)`,
+                        border: `1px solid rgba(${meta.rgb},0.25)`,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}>
                         {isJoining ? '⏳' : '🎮'}
@@ -189,14 +183,15 @@ export default function Rooms() {
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             <span style={{
                               fontFamily: 'var(--font-number)',
-                              fontSize: 12, fontWeight: 700, color: eraColor.from,
-                              background: `rgba(${eraColor.rgb},0.15)`,
+                              fontSize: 12, fontWeight: 700, color: meta.from,
+                              background: `rgba(${meta.rgb},0.15)`,
                               padding: '2px 8px', borderRadius: 6,
+                              letterSpacing: '0.5px',
                             }}>
-                              {room.eraId}
+                              Part.{room.partId}
                             </span>
                             <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', fontWeight: 700 }}>
-                              Part.{room.partId}
+                              {meta.label}
                             </span>
                             <span style={{
                               fontFamily: 'var(--font-number)',
@@ -218,8 +213,8 @@ export default function Rooms() {
                       {/* 인원 */}
                       <div style={{
                         fontFamily: 'var(--font-number)',
-                        fontSize: 14, fontWeight: 700, color: eraColor.from,
-                        background: `rgba(${eraColor.rgb},0.12)`,
+                        fontSize: 14, fontWeight: 700, color: meta.from,
+                        background: `rgba(${meta.rgb},0.12)`,
                         padding: '5px 10px', borderRadius: 8, flexShrink: 0,
                         marginRight: isAdmin ? 38 : 0,
                         letterSpacing: '0.5px',

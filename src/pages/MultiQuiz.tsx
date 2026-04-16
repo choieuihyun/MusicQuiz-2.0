@@ -7,15 +7,9 @@ import {
   sendChatMessage, subscribeToChatMessages, subscribeToBubbles,
 } from '../lib/realtimeDB'
 import type { Room, ChatMessage, Bubble } from '../lib/realtimeDB'
-import { saveScore } from '../lib/firestore'
-import { MOCK_QUESTIONS } from '../lib/mockQuizData'
+import { saveScore, getPartQuestions } from '../lib/firestore'
+import { partMeta } from '../lib/parts'
 import type { QuizQuestion } from '../types/quiz'
-
-const ERA_COLORS: Record<string, { from: string; to: string; rgb: string }> = {
-  '2000s': { from: '#a855f7', to: '#6366f1', rgb: '168,85,247' },
-  '2010s': { from: '#22d3ee', to: '#3b82f6', rgb: '34,211,238' },
-  '2020s': { from: '#f472b6', to: '#f43f5e', rgb: '244,114,182' },
-}
 
 function renderLyrics(lyrics: string, color: string) {
   const parts = lyrics.split('(  )')
@@ -80,10 +74,19 @@ export default function MultiQuiz() {
   const chatEndRef = useRef<HTMLDivElement>(null)
   const prevMsgCount = useRef(0)
 
-  // TODO: Firebase에서 room.eraId + room.partId 기준으로 문제 로드
-  const questions: QuizQuestion[] = MOCK_QUESTIONS
+  const [questions, setQuestions] = useState<QuizQuestion[]>([])
+  const [questionsLoaded, setQuestionsLoaded] = useState(false)
 
-  const era = room ? ERA_COLORS[room.eraId] ?? ERA_COLORS['2000s'] : ERA_COLORS['2000s']
+  // 파트 문제 로드 (Firestore)
+  useEffect(() => {
+    const partId = room?.partId
+    if (!partId) return
+    getPartQuestions(partId)
+      .then(qs => { setQuestions(qs); setQuestionsLoaded(true) })
+      .catch(err => { console.error('[문제 로드 실패]', err); setQuestionsLoaded(true) })
+  }, [room?.partId])
+
+  const meta = partMeta(room?.partId ?? '')
   const isHost = room?.hostId === sessionId
   const currentQ = room ? room.currentQuestion : 0
   const q = questions[currentQ]
@@ -91,7 +94,9 @@ export default function MultiQuiz() {
   const _allSubmitted = room ? Object.values(room.players).every(p => p.submitted) : false
   void _allSubmitted
   const myPlayer = room?.players[sessionId]
-  const progress = ((currentQ + (revealed ? 1 : 0)) / questions.length) * 100
+  const progress = questions.length === 0
+    ? 0
+    : ((currentQ + (revealed ? 1 : 0)) / questions.length) * 100
 
   // 1초 tick — 말풍선 자동 소멸용
   useEffect(() => {
@@ -178,7 +183,7 @@ export default function MultiQuiz() {
     const myPlayer = room.players[sessionId]
     if (!myPlayer) return
     scoreSavedRef.current = true
-    saveScore(sessionId, nickname, room.eraId, room.partId, myPlayer.score, questions.length, photoURL)
+    saveScore(sessionId, nickname, room.partId, myPlayer.score, questions.length, photoURL)
   }, [room?.status])
 
   // 채팅 구독
@@ -269,7 +274,60 @@ export default function MultiQuiz() {
 
   const CONFETTI_COLORS = ['#a855f7', '#22d3ee', '#f472b6', '#facc15', '#4ade80', '#fb923c', '#fff']
 
-  if (!room || !q) {
+  if (!room) {
+    return (
+      <div style={{
+        minHeight: '100svh', background: 'var(--bg-main)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontFamily: 'var(--font-display)',
+        fontSize: 20, color: 'rgba(255,255,255,0.3)', letterSpacing: '1px',
+      }}>
+        로딩 중...
+      </div>
+    )
+  }
+
+  // 문제 데이터 없음 — 준비 중인 파트
+  if (questionsLoaded && questions.length === 0) {
+    return (
+      <div style={{
+        minHeight: '100svh', background: 'var(--bg-main)',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        fontFamily: 'var(--font-body)', padding: '0 24px',
+        position: 'relative',
+      }}>
+        <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', background: 'var(--bg-accent)' }} />
+        <div style={{ fontSize: 56, marginBottom: 18, filter: `drop-shadow(0 0 24px rgba(${meta.rgb},0.5))` }}>🎵</div>
+        <div style={{
+          fontFamily: 'var(--font-display)', fontSize: 28, color: '#fff',
+          letterSpacing: '-0.5px', marginBottom: 8, textAlign: 'center',
+          textShadow: `0 0 40px rgba(${meta.rgb},0.4)`,
+        }}>
+          Part.{room.partId} 준비 중
+        </div>
+        <div style={{
+          fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.35)',
+          letterSpacing: '0.5px', marginBottom: 28, textAlign: 'center',
+        }}>
+          아직 문제가 업로드되지 않았어요
+        </div>
+        <button
+          onClick={handleGoHome}
+          style={{
+            padding: '14px 28px', borderRadius: 14, border: 'none',
+            background: `linear-gradient(135deg, ${meta.from}, ${meta.to})`,
+            fontFamily: 'var(--font-display)',
+            fontSize: 16, color: '#fff', cursor: 'pointer', letterSpacing: '0.5px',
+            boxShadow: `0 6px 24px rgba(${meta.rgb},0.4)`,
+          }}
+        >
+          홈으로 →
+        </button>
+      </div>
+    )
+  }
+
+  if (!q) {
     return (
       <div style={{
         minHeight: '100svh', background: 'var(--bg-main)',
@@ -301,19 +359,19 @@ export default function MultiQuiz() {
         <div style={{
           position: 'fixed', top: '30%', left: '50%', transform: 'translate(-50%, -50%)',
           width: 600, height: 400, pointerEvents: 'none',
-          background: `radial-gradient(ellipse, rgba(${era.rgb},0.1) 0%, transparent 70%)`,
+          background: `radial-gradient(ellipse, rgba(${meta.rgb},0.1) 0%, transparent 70%)`,
         }} />
 
         {/* 타이틀 */}
         <div style={{ textAlign: 'center', marginBottom: 28, position: 'relative' }}>
           <div style={{
             fontSize: 60, marginBottom: 12,
-            filter: `drop-shadow(0 0 28px rgba(${era.rgb},0.7))`,
+            filter: `drop-shadow(0 0 28px rgba(${meta.rgb},0.7))`,
           }}>🏆</div>
           <div style={{
             fontFamily: 'var(--font-display)',
             fontSize: 38, color: '#fff', letterSpacing: '-0.5px',
-            textShadow: `0 0 60px rgba(${era.rgb},0.5)`,
+            textShadow: `0 0 60px rgba(${meta.rgb},0.5)`,
             marginBottom: 8,
           }}>
             게임 종료
@@ -321,7 +379,7 @@ export default function MultiQuiz() {
           <div style={{
             fontFamily: 'var(--font-number)',
             fontSize: 14, fontWeight: 700, letterSpacing: '2px',
-            color: `rgba(${era.rgb},0.7)`,
+            color: `rgba(${meta.rgb},0.7)`,
           }}>
             나의 순위 {myRank}위 · {myScore}/{questions.length} ({pct}%)
           </div>
@@ -331,7 +389,7 @@ export default function MultiQuiz() {
         <div style={{
           background: 'rgba(255,255,255,0.04)',
           border: '1px solid rgba(255,255,255,0.08)',
-          borderLeft: `4px solid ${era.from}`,
+          borderLeft: `4px solid ${meta.from}`,
           borderRadius: 20, padding: '12px 14px',
           marginBottom: 20, maxWidth: 420, margin: '0 auto 20px',
           position: 'relative',
@@ -346,20 +404,20 @@ export default function MultiQuiz() {
                 style={{
                   display: 'flex', alignItems: 'center', gap: 12,
                   padding: '11px 12px', borderRadius: 12,
-                  background: isMe ? `rgba(${era.rgb},0.12)` : 'transparent',
+                  background: isMe ? `rgba(${meta.rgb},0.12)` : 'transparent',
                   marginBottom: idx < sortedPlayers.length - 1 ? 6 : 0,
-                  border: isMe ? `1px solid rgba(${era.rgb},0.25)` : '1px solid transparent',
+                  border: isMe ? `1px solid rgba(${meta.rgb},0.25)` : '1px solid transparent',
                 }}
               >
                 <div style={{
                   width: 34, height: 34, borderRadius: 9, flexShrink: 0,
                   background: rank <= 3
-                    ? `linear-gradient(135deg, ${era.from}, ${era.to})`
+                    ? `linear-gradient(135deg, ${meta.from}, ${meta.to})`
                     : 'rgba(255,255,255,0.08)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontFamily: rank <= 3 ? undefined : 'var(--font-number)',
                   fontSize: rank <= 3 ? 16 : 13, fontWeight: 900, color: '#fff',
-                  boxShadow: rank <= 3 ? `0 3px 12px rgba(${era.rgb},0.4)` : 'none',
+                  boxShadow: rank <= 3 ? `0 3px 12px rgba(${meta.rgb},0.4)` : 'none',
                 }}>
                   {medals[rank] ?? rank}
                 </div>
@@ -371,7 +429,7 @@ export default function MultiQuiz() {
                     {player.displayName}
                     {isMe && (
                       <span style={{
-                        fontSize: 10, fontWeight: 700, color: era.from,
+                        fontSize: 10, fontWeight: 700, color: meta.from,
                         marginLeft: 8, letterSpacing: '0.5px',
                       }}>나</span>
                     )}
@@ -379,7 +437,7 @@ export default function MultiQuiz() {
                 </div>
                 <div style={{
                   fontFamily: 'var(--font-number)',
-                  fontSize: 17, fontWeight: 900, color: era.from,
+                  fontSize: 17, fontWeight: 900, color: meta.from,
                   letterSpacing: '0.5px',
                 }}>
                   {player.score}
@@ -396,11 +454,11 @@ export default function MultiQuiz() {
           onClick={handleGoHome}
           style={{
             display: 'block', width: '100%', maxWidth: 420, margin: '0 auto',
-            background: `linear-gradient(135deg, ${era.from}, ${era.to})`,
+            background: `linear-gradient(135deg, ${meta.from}, ${meta.to})`,
             border: 'none', borderRadius: 16, padding: '17px',
             fontFamily: 'var(--font-display)',
             fontSize: 20, color: '#fff', cursor: 'pointer', letterSpacing: '0.5px',
-            boxShadow: `0 8px 32px rgba(${era.rgb},0.45)`,
+            boxShadow: `0 8px 32px rgba(${meta.rgb},0.45)`,
           }}
         >
           홈으로 돌아가기 →
@@ -514,12 +572,12 @@ export default function MultiQuiz() {
           position: 'fixed', right: drawerOpen ? 224 : 0, top: '50%',
           transform: 'translateY(-50%)',
           zIndex: 201, width: 28,
-          background: `linear-gradient(180deg, ${era.from}, ${era.to})`,
+          background: `linear-gradient(180deg, ${meta.from}, ${meta.to})`,
           borderRadius: '10px 0 0 10px',
           padding: '14px 0',
           display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
           cursor: 'pointer',
-          boxShadow: `-3px 0 20px rgba(${era.rgb},0.4)`,
+          boxShadow: `-3px 0 20px rgba(${meta.rgb},0.4)`,
           transition: 'right 0.3s cubic-bezier(0.4,0,0.2,1)',
           WebkitTapHighlightColor: 'transparent',
         }}
@@ -562,7 +620,7 @@ export default function MultiQuiz() {
         position: 'fixed', top: 0, right: 0, bottom: 0, width: 224,
         zIndex: 201,
         background: 'linear-gradient(180deg, rgba(21,5,40,0.98) 0%, rgba(6,4,18,0.98) 100%)',
-        borderLeft: `1px solid rgba(${era.rgb},0.2)`,
+        borderLeft: `1px solid rgba(${meta.rgb},0.2)`,
         boxShadow: `-8px 0 40px rgba(0,0,0,0.6)`,
         transform: drawerOpen ? 'translateX(0)' : 'translateX(100%)',
         transition: 'transform 0.3s cubic-bezier(0.4,0,0.2,1)',
@@ -589,13 +647,13 @@ export default function MultiQuiz() {
                 style={{
                   flex: 1, padding: '7px 0', borderRadius: 9, border: 'none',
                   background: drawerTab === tab.key
-                    ? `linear-gradient(135deg, ${era.from}, ${era.to})`
+                    ? `linear-gradient(135deg, ${meta.from}, ${meta.to})`
                     : 'transparent',
                   color: drawerTab === tab.key ? '#fff' : 'rgba(255,255,255,0.35)',
                   fontSize: 11, fontWeight: 700, cursor: 'pointer',
                   WebkitTapHighlightColor: 'transparent',
                   position: 'relative',
-                  boxShadow: drawerTab === tab.key ? `0 2px 10px rgba(${era.rgb},0.35)` : 'none',
+                  boxShadow: drawerTab === tab.key ? `0 2px 10px rgba(${meta.rgb},0.35)` : 'none',
                   transition: 'all 0.2s ease',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
                 }}
@@ -645,14 +703,14 @@ export default function MultiQuiz() {
                     style={{
                       borderRadius: 12,
                       background: isMe
-                        ? `rgba(${era.rgb},0.14)`
+                        ? `rgba(${meta.rgb},0.14)`
                         : wasNudged ? 'rgba(244,114,182,0.1)' : 'rgba(255,255,255,0.04)',
                       border: `1px solid ${
-                        isMe ? `rgba(${era.rgb},0.3)`
+                        isMe ? `rgba(${meta.rgb},0.3)`
                         : wasNudged ? 'rgba(244,114,182,0.35)' : 'rgba(255,255,255,0.07)'
                       }`,
                       borderLeft: `3px solid ${
-                        isMe ? era.from
+                        isMe ? meta.from
                         : wasNudged ? '#f472b6' : 'transparent'
                       }`,
                       overflow: 'hidden',
@@ -677,7 +735,7 @@ export default function MultiQuiz() {
                           {player.displayName}
                           {isMe && (
                             <span style={{
-                              fontSize: 9, color: era.from, marginLeft: 4, fontWeight: 700,
+                              fontSize: 9, color: meta.from, marginLeft: 4, fontWeight: 700,
                             }}>나</span>
                           )}
                         </div>
@@ -693,12 +751,12 @@ export default function MultiQuiz() {
                         {bubble && (
                           <div style={{
                             marginTop: 5,
-                            background: isMe ? `rgba(${era.rgb},0.18)` : 'rgba(255,255,255,0.09)',
-                            border: `1px solid ${isMe ? `rgba(${era.rgb},0.3)` : 'rgba(255,255,255,0.12)'}`,
+                            background: isMe ? `rgba(${meta.rgb},0.18)` : 'rgba(255,255,255,0.09)',
+                            border: `1px solid ${isMe ? `rgba(${meta.rgb},0.3)` : 'rgba(255,255,255,0.12)'}`,
                             borderRadius: '0 8px 8px 8px',
                             padding: '4px 8px',
                             fontSize: 10, fontWeight: 600,
-                            color: isMe ? era.from : 'rgba(255,255,255,0.75)',
+                            color: isMe ? meta.from : 'rgba(255,255,255,0.75)',
                             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                           }}>
                             {bubble}
@@ -708,7 +766,7 @@ export default function MultiQuiz() {
                       <div style={{
                         fontFamily: 'var(--font-number)',
                         fontSize: 16, fontWeight: 900,
-                        color: isMe ? era.from : hasSubmitted ? '#fff' : 'rgba(255,255,255,0.3)',
+                        color: isMe ? meta.from : hasSubmitted ? '#fff' : 'rgba(255,255,255,0.3)',
                         flexShrink: 0,
                       }}>
                         {player.score}
@@ -762,7 +820,7 @@ export default function MultiQuiz() {
                 </div>
               ) : (
                 chatMessages.map(({ id, data }) => {
-                  const isMe = data.sessionId === sessionId
+                  const isMe = data.displayName === nickname
                   return (
                     <div key={id} style={{
                       display: 'flex',
@@ -800,7 +858,7 @@ export default function MultiQuiz() {
                         )}
                         <div style={{
                           background: isMe
-                            ? `linear-gradient(135deg, ${era.from}cc, ${era.to}99)`
+                            ? `linear-gradient(135deg, ${meta.from}cc, ${meta.to}99)`
                             : 'rgba(255,255,255,0.08)',
                           border: isMe ? 'none' : '1px solid rgba(255,255,255,0.1)',
                           borderRadius: isMe ? '10px 10px 2px 10px' : '10px 10px 10px 2px',
@@ -808,7 +866,7 @@ export default function MultiQuiz() {
                           fontSize: 12, fontWeight: 600,
                           color: isMe ? '#fff' : 'rgba(255,255,255,0.85)',
                           wordBreak: 'break-word',
-                          boxShadow: isMe ? `0 2px 10px rgba(${era.rgb},0.3)` : 'none',
+                          boxShadow: isMe ? `0 2px 10px rgba(${meta.rgb},0.3)` : 'none',
                         }}>
                           {data.message}
                         </div>
@@ -830,13 +888,13 @@ export default function MultiQuiz() {
             <div style={{
               flexShrink: 0,
               padding: '8px 10px 16px',
-              borderTop: `1px solid rgba(${era.rgb},0.15)`,
+              borderTop: `1px solid rgba(${meta.rgb},0.15)`,
               background: 'rgba(6,4,18,0.6)',
             }}>
               <div style={{
                 display: 'flex', gap: 6,
                 background: 'rgba(255,255,255,0.05)',
-                border: `1px solid rgba(${era.rgb},0.2)`,
+                border: `1px solid rgba(${meta.rgb},0.2)`,
                 borderRadius: 12,
                 padding: '7px 7px 7px 10px',
               }}>
@@ -859,12 +917,12 @@ export default function MultiQuiz() {
                   style={{
                     width: 30, height: 30, borderRadius: 8, border: 'none',
                     background: chatInput.trim()
-                      ? `linear-gradient(135deg, ${era.from}, ${era.to})`
+                      ? `linear-gradient(135deg, ${meta.from}, ${meta.to})`
                       : 'rgba(255,255,255,0.07)',
                     cursor: chatInput.trim() ? 'pointer' : 'default',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: 14, flexShrink: 0,
-                    boxShadow: chatInput.trim() ? `0 2px 10px rgba(${era.rgb},0.4)` : 'none',
+                    boxShadow: chatInput.trim() ? `0 2px 10px rgba(${meta.rgb},0.4)` : 'none',
                     transition: 'all 0.15s ease',
                     WebkitTapHighlightColor: 'transparent',
                     color: '#fff',
@@ -889,11 +947,11 @@ export default function MultiQuiz() {
           </span>
           <span style={{
             fontFamily: 'var(--font-number)',
-            fontSize: 11, fontWeight: 700, color: era.from,
-            background: `rgba(${era.rgb},0.15)`, padding: '4px 10px', borderRadius: 8,
+            fontSize: 11, fontWeight: 700, color: meta.from,
+            background: `rgba(${meta.rgb},0.15)`, padding: '4px 10px', borderRadius: 8,
             letterSpacing: '0.5px',
           }}>
-            {room.eraId} · Part.{room.partId}
+            Part.{room.partId} · {meta.label}
           </span>
         </div>
 
@@ -901,9 +959,9 @@ export default function MultiQuiz() {
         <div style={{ height: 3, background: 'rgba(255,255,255,0.07)', borderRadius: 100, overflow: 'hidden' }}>
           <div style={{
             height: '100%', borderRadius: 100,
-            background: `linear-gradient(90deg, ${era.from}, ${era.to})`,
+            background: `linear-gradient(90deg, ${meta.from}, ${meta.to})`,
             width: `${progress}%`,
-            boxShadow: `0 0 8px rgba(${era.rgb},0.5)`,
+            boxShadow: `0 0 8px rgba(${meta.rgb},0.5)`,
             transition: 'width 0.4s ease',
           }} />
         </div>
@@ -923,7 +981,7 @@ export default function MultiQuiz() {
                 style={{
                   fontFamily: 'var(--font-number)',
                   fontSize: 15, fontWeight: 900, letterSpacing: '0.5px',
-                  color: timeLeft <= 5 ? '#f43f5e' : era.from,
+                  color: timeLeft <= 5 ? '#f43f5e' : meta.from,
                 }}
               >
                 {timeLeft}s
@@ -936,11 +994,11 @@ export default function MultiQuiz() {
                   height: '100%', borderRadius: 100,
                   background: timeLeft <= 5
                     ? 'linear-gradient(90deg, #f43f5e, #ef4444)'
-                    : `linear-gradient(90deg, ${era.from}, ${era.to})`,
+                    : `linear-gradient(90deg, ${meta.from}, ${meta.to})`,
                   width: `${(timeLeft / room.timeLimit) * 100}%`,
                   boxShadow: timeLeft <= 5
                     ? '0 0 12px rgba(244,63,94,0.6)'
-                    : `0 0 8px rgba(${era.rgb},0.5)`,
+                    : `0 0 8px rgba(${meta.rgb},0.5)`,
                   transition: 'width 0.1s linear',
                 }}
               />
@@ -956,17 +1014,17 @@ export default function MultiQuiz() {
         <div style={{
           background: 'rgba(255,255,255,0.04)',
           backdropFilter: 'blur(24px)',
-          border: `1px solid rgba(${era.rgb},0.18)`,
-          borderLeft: `4px solid ${era.from}`,
+          border: `1px solid rgba(${meta.rgb},0.18)`,
+          borderLeft: `4px solid ${meta.from}`,
           borderRadius: 20, padding: '20px 18px',
           boxShadow: `0 8px 36px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.07)`,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
             <div style={{
               width: 26, height: 26, borderRadius: 7,
-              background: `linear-gradient(135deg, ${era.from}, ${era.to})`,
+              background: `linear-gradient(135deg, ${meta.from}, ${meta.to})`,
               display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13,
-              boxShadow: `0 2px 10px rgba(${era.rgb},0.4)`,
+              boxShadow: `0 2px 10px rgba(${meta.rgb},0.4)`,
             }}>
               🎵
             </div>
@@ -984,7 +1042,7 @@ export default function MultiQuiz() {
             fontSize: 19, fontWeight: 800, color: '#fff',
             lineHeight: 1.75, textAlign: 'center',
           }}>
-            {renderLyrics(q.lyrics, era.from)}
+            {renderLyrics(q.lyrics, meta.from)}
           </p>
         </div>
 
@@ -1012,10 +1070,10 @@ export default function MultiQuiz() {
                 textColor = '#f87171'
               }
             } else if (isSelected) {
-              bg = `rgba(${era.rgb},0.14)`
-              borderColor = `rgba(${era.rgb},0.5)`
-              borderLeft = `3px solid ${era.from}`
-              textColor = era.from
+              bg = `rgba(${meta.rgb},0.14)`
+              borderColor = `rgba(${meta.rgb},0.5)`
+              borderLeft = `3px solid ${meta.from}`
+              textColor = meta.from
             }
 
             return (
@@ -1038,7 +1096,7 @@ export default function MultiQuiz() {
               >
                 <div style={{
                   width: 26, height: 26, borderRadius: 7, flexShrink: 0,
-                  background: `rgba(${era.rgb},0.1)`,
+                  background: `rgba(${meta.rgb},0.1)`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontFamily: 'var(--font-number)',
                   fontSize: 12, fontWeight: 900, color: textColor,
@@ -1064,11 +1122,11 @@ export default function MultiQuiz() {
             onClick={handleSubmit}
             style={{
               width: '100%', marginTop: 2,
-              background: `linear-gradient(135deg, ${era.from}, ${era.to})`,
+              background: `linear-gradient(135deg, ${meta.from}, ${meta.to})`,
               border: 'none', borderRadius: 14, padding: '15px',
               fontFamily: 'var(--font-display)',
               fontSize: 18, color: '#fff', cursor: 'pointer', letterSpacing: '0.5px',
-              boxShadow: `0 8px 28px rgba(${era.rgb},0.45)`,
+              boxShadow: `0 8px 28px rgba(${meta.rgb},0.45)`,
             }}
           >
             제출하기 →
@@ -1092,11 +1150,11 @@ export default function MultiQuiz() {
             onClick={handleNextQuestion}
             style={{
               width: '100%', marginTop: 2, marginBottom: 24,
-              background: `linear-gradient(135deg, ${era.from}, ${era.to})`,
+              background: `linear-gradient(135deg, ${meta.from}, ${meta.to})`,
               border: 'none', borderRadius: 14, padding: '15px',
               fontFamily: 'var(--font-display)',
               fontSize: 18, color: '#fff', cursor: 'pointer', letterSpacing: '0.5px',
-              boxShadow: `0 8px 28px rgba(${era.rgb},0.4)`,
+              boxShadow: `0 8px 28px rgba(${meta.rgb},0.4)`,
             }}
           >
             {currentQ + 1 >= questions.length ? '결과 보기 →' : '다음 문제 →'}
