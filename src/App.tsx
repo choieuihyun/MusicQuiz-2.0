@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import Landing from './pages/Landing'
 import Home from './pages/Home'
-import Quiz from './pages/Quiz'
 import Ranking from './pages/Ranking'
 import Login from './pages/Login'
 import Rooms from './pages/Rooms'
@@ -11,8 +11,8 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/quiz/:eraId/:partId" element={<Quiz />} />
+        <Route path="/" element={<Landing />} />
+        <Route path="/create" element={<Home />} />
         <Route path="/ranking" element={<Ranking />} />
         <Route path="/login" element={<Login />} />
         <Route path="/rooms" element={<Rooms />} />

@@ -5,9 +5,11 @@ import { generateSessionId } from '../lib/realtimeDB'
 interface PlayerState {
   sessionId: string
   nickname: string
+  photoURL: string
   isAdmin: boolean
   currentRoomCode: string | null
   setNickname: (name: string) => void
+  setPhotoURL: (url: string) => void
   setAdmin: (value: boolean) => void
   setCurrentRoom: (roomCode: string | null) => void
   resetSession: () => void
@@ -18,10 +20,13 @@ export const usePlayerStore = create<PlayerState>()(
     (set) => ({
       sessionId: generateSessionId(),
       nickname: '',
+      photoURL: '',
       isAdmin: false,
       currentRoomCode: null,
 
       setNickname: (name: string) => set({ nickname: name }),
+
+      setPhotoURL: (url: string) => set({ photoURL: url }),
 
       setAdmin: (value: boolean) => set({ isAdmin: value }),
 
@@ -30,6 +35,7 @@ export const usePlayerStore = create<PlayerState>()(
       resetSession: () => set({
         sessionId: generateSessionId(),
         nickname: '',
+        photoURL: '',
         isAdmin: false,
         currentRoomCode: null,
       }),
@@ -39,6 +45,7 @@ export const usePlayerStore = create<PlayerState>()(
       partialize: (state) => ({
         sessionId: state.sessionId,
         nickname: state.nickname,
+        photoURL: state.photoURL,
         isAdmin: state.isAdmin,
       }),
     }

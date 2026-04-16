@@ -1,5 +1,7 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
+import { storage } from '../lib/firebase'
 import { usePlayerStore } from '../store/playerStore'
 import { registerNickname, releaseNickname } from '../lib/realtimeDB'
 
@@ -7,13 +9,23 @@ const ADMIN_CODE = 'MUSICQUIZ_ADMIN'
 
 export default function Login() {
   const navigate = useNavigate()
-  const { sessionId, nickname: prevNickname, setNickname, setAdmin } = usePlayerStore()
+  const { sessionId, nickname: prevNickname, setNickname, setPhotoURL, setAdmin } = usePlayerStore()
   const [input, setInput] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [showAdmin, setShowAdmin] = useState(false)
   const [adminCode, setAdminCode] = useState('')
   const [adminError, setAdminError] = useState('')
+  const [photoFile, setPhotoFile] = useState<File | null>(null)
+  const [photoPreview, setPhotoPreview] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setPhotoFile(file)
+    setPhotoPreview(URL.createObjectURL(file))
+  }
 
   const handleSubmit = async () => {
     const trimmed = input.trim()
@@ -33,14 +45,21 @@ export default function Login() {
         return
       }
 
-      // 닉네임 변경 시 이전 닉네임 해제
       if (prevNickname && prevNickname !== trimmed) {
         await releaseNickname(prevNickname)
       }
 
+      let url = ''
+      if (photoFile) {
+        const fileRef = storageRef(storage, `profiles/${sessionId}`)
+        await uploadBytes(fileRef, photoFile)
+        url = await getDownloadURL(fileRef)
+      }
+
       setAdmin(showAdmin)
       setNickname(trimmed)
-      navigate('/rooms')
+      setPhotoURL(url)
+      navigate('/')
     } catch {
       setError('서버 오류가 발생했습니다')
     } finally {
@@ -51,135 +70,211 @@ export default function Login() {
   return (
     <div style={{
       minHeight: '100svh',
-      background: 'radial-gradient(ellipse at 50% -10%, #1a0a3e 0%, #0d0820 55%, #060412 100%)',
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      background: 'var(--bg-main)',
+      fontFamily: 'var(--font-body)',
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      padding: '0 24px',
+      padding: '0 20px',
+      position: 'relative', overflow: 'hidden',
     }}>
+      {/* 배경 광원 레이어 */}
       <div style={{
         position: 'fixed', inset: 0, pointerEvents: 'none',
-        background: 'radial-gradient(ellipse at 20% 110%, rgba(99,102,241,0.12) 0%, transparent 55%)',
+        background: 'var(--bg-accent)',
+      }} />
+      <div style={{
+        position: 'fixed', top: '60%', left: '50%', transform: 'translate(-50%, -50%)',
+        width: 600, height: 600, borderRadius: '50%', pointerEvents: 'none',
+        background: 'radial-gradient(circle, rgba(168,85,247,0.08) 0%, transparent 70%)',
       }} />
 
-      <div style={{ textAlign: 'center', marginBottom: 48, position: 'relative' }}>
+      {/* 타이틀 */}
+      <div style={{ textAlign: 'center', marginBottom: 36, position: 'relative' }}>
         <div style={{
-          fontSize: 64, marginBottom: 16,
-          filter: 'drop-shadow(0 0 24px rgba(168,85,247,0.7))',
-        }}>🎵</div>
-        <h1 style={{
-          margin: 0, fontSize: 36, fontWeight: 900, color: '#fff',
-          letterSpacing: '-1.5px', textShadow: '0 0 40px rgba(168,85,247,0.4)',
-        }}>Music Quiz</h1>
-        <p style={{ margin: '10px 0 0', fontSize: 14, color: 'rgba(255,255,255,0.38)' }}>
+          fontFamily: 'var(--font-display)',
+          fontSize: 52, lineHeight: 1, color: '#fff',
+          letterSpacing: '-1px',
+          textShadow: '0 0 60px rgba(168,85,247,0.6), 0 0 120px rgba(168,85,247,0.2)',
+          marginBottom: 8,
+        }}>
+          MUSIC QUIZ
+        </div>
+        <div style={{
+          fontSize: 12, fontWeight: 700, letterSpacing: '4px', textTransform: 'uppercase',
+          color: 'rgba(168,85,247,0.7)',
+        }}>
           한국 가요 가사 빈칸 맞추기
-        </p>
+        </div>
       </div>
 
+      {/* 카드 */}
       <div style={{
-        width: '100%', maxWidth: 380, position: 'relative',
-        background: 'rgba(255,255,255,0.05)',
-        backdropFilter: 'blur(20px)',
+        width: '100%', maxWidth: 380,
+        background: 'rgba(255,255,255,0.04)',
+        backdropFilter: 'blur(24px)',
         border: '1px solid rgba(255,255,255,0.1)',
-        borderRadius: 24, padding: 28,
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.1), 0 24px 64px rgba(0,0,0,0.5)',
+        borderRadius: 24,
+        overflow: 'hidden',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.1), 0 32px 80px rgba(0,0,0,0.6)',
+        position: 'relative',
       }}>
-        {/* 닉네임 */}
-        <label style={{
-          display: 'block', fontSize: 13, fontWeight: 700,
-          color: 'rgba(255,255,255,0.5)', marginBottom: 10,
-        }}>
-          닉네임
-        </label>
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => { setInput(e.target.value); setError('') }}
-          onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
-          placeholder="사용할 닉네임을 입력하세요"
-          maxLength={16}
-          autoFocus
-          style={{
-            width: '100%', padding: '16px', fontSize: 17, fontWeight: 600,
-            background: 'rgba(255,255,255,0.07)',
-            border: `1px solid ${error ? 'rgba(244,63,94,0.5)' : 'rgba(255,255,255,0.12)'}`,
-            borderRadius: 14, color: '#fff', outline: 'none',
-            boxSizing: 'border-box', marginBottom: 8,
-          }}
-        />
-        {error && (
-          <div style={{ fontSize: 13, color: '#f87171', marginBottom: 8, fontWeight: 600 }}>
-            {error}
-          </div>
-        )}
+        {/* 상단 컬러 바 */}
+        <div style={{
+          height: 3,
+          background: showAdmin
+            ? 'linear-gradient(90deg, #f59e0b, #d97706)'
+            : 'linear-gradient(90deg, #a855f7, #6366f1)',
+          boxShadow: showAdmin
+            ? '0 0 16px rgba(245,158,11,0.6)'
+            : '0 0 16px rgba(168,85,247,0.6)',
+        }} />
 
-        {/* 관리자 코드 섹션 */}
-        {showAdmin && (
-          <div style={{
-            marginTop: 4, marginBottom: 8,
-            padding: '14px 16px',
-            background: 'rgba(251,191,36,0.06)',
-            border: '1px solid rgba(251,191,36,0.2)',
-            borderRadius: 12,
-          }}>
-            <label style={{
-              display: 'block', fontSize: 12, fontWeight: 700,
-              color: 'rgba(251,191,36,0.7)', marginBottom: 8,
-            }}>
-              🔑 관리자 코드
-            </label>
-            <input
-              type="password"
-              value={adminCode}
-              onChange={(e) => { setAdminCode(e.target.value); setAdminError('') }}
-              placeholder="관리자 코드 입력"
+        <div style={{ padding: '28px 28px 32px' }}>
+          {/* 프로필 사진 */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 28 }}>
+            <div
+              onClick={() => fileInputRef.current?.click()}
               style={{
-                width: '100%', padding: '12px 14px', fontSize: 15, fontWeight: 600,
-                background: 'rgba(255,255,255,0.06)',
-                border: `1px solid ${adminError ? 'rgba(244,63,94,0.5)' : 'rgba(251,191,36,0.2)'}`,
-                borderRadius: 10, color: '#fff', outline: 'none',
-                boxSizing: 'border-box',
+                width: 88, height: 88, borderRadius: '50%',
+                background: photoPreview
+                  ? 'transparent'
+                  : 'radial-gradient(circle at 35% 35%, rgba(168,85,247,0.25), rgba(99,102,241,0.1))',
+                border: `2px dashed ${photoPreview ? 'rgba(168,85,247,0.6)' : 'rgba(168,85,247,0.35)'}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', overflow: 'hidden',
+                boxShadow: photoPreview ? '0 0 28px rgba(168,85,247,0.4)' : '0 0 20px rgba(168,85,247,0.1)',
+                transition: 'all 0.2s ease',
               }}
+            >
+              {photoPreview
+                ? <img src={photoPreview} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                : <span style={{ fontSize: 30, opacity: 0.45 }}>🎤</span>
+              }
+            </div>
+            <span style={{
+              fontSize: 11, fontWeight: 700, letterSpacing: '1px',
+              color: 'rgba(255,255,255,0.25)', marginTop: 10, textTransform: 'uppercase',
+            }}>
+              {photoPreview ? '사진 변경' : '프로필 사진 (선택)'}
+            </span>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handlePhotoChange}
+              style={{ display: 'none' }}
             />
-            {adminError && (
-              <div style={{ fontSize: 12, color: '#f87171', marginTop: 6, fontWeight: 600 }}>
-                {adminError}
-              </div>
-            )}
           </div>
-        )}
 
-        <div style={{ marginBottom: 20, marginTop: 4, display: 'flex', justifyContent: 'flex-end' }}>
-          <button
-            onClick={() => { setShowAdmin(!showAdmin); setAdminCode(''); setAdminError('') }}
+          {/* 닉네임 */}
+          <div style={{
+            fontSize: 10, fontWeight: 700, letterSpacing: '2px', textTransform: 'uppercase',
+            color: 'rgba(255,255,255,0.35)', marginBottom: 8,
+          }}>
+            닉네임
+          </div>
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => { setInput(e.target.value); setError('') }}
+            onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+            placeholder="사용할 닉네임을 입력하세요"
+            maxLength={16}
+            autoFocus
             style={{
-              background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-              fontSize: 12, color: showAdmin ? 'rgba(251,191,36,0.6)' : 'rgba(255,255,255,0.2)',
-              fontWeight: 600,
+              width: '100%', padding: '15px 16px',
+              fontSize: 16, fontWeight: 700,
+              fontFamily: 'var(--font-body)',
+              background: 'rgba(255,255,255,0.06)',
+              border: `1px solid ${error ? 'rgba(244,63,94,0.6)' : 'rgba(255,255,255,0.1)'}`,
+              borderRadius: 14, color: '#fff', outline: 'none',
+              boxSizing: 'border-box', marginBottom: 8,
+              transition: 'border-color 0.2s',
+            }}
+          />
+          {error && (
+            <div style={{
+              fontSize: 12, fontWeight: 700, color: '#f87171',
+              marginBottom: 8, letterSpacing: '0.3px',
+            }}>
+              ⚠ {error}
+            </div>
+          )}
+
+          {/* 관리자 코드 */}
+          {showAdmin && (
+            <div style={{
+              marginTop: 4, marginBottom: 8,
+              padding: '14px 16px',
+              background: 'rgba(251,191,36,0.05)',
+              border: '1px solid rgba(251,191,36,0.2)',
+              borderRadius: 12,
+            }}>
+              <div style={{
+                fontSize: 10, fontWeight: 700, letterSpacing: '2px',
+                color: 'rgba(251,191,36,0.6)', marginBottom: 8, textTransform: 'uppercase',
+              }}>
+                🔑 관리자 코드
+              </div>
+              <input
+                type="password"
+                value={adminCode}
+                onChange={(e) => { setAdminCode(e.target.value); setAdminError('') }}
+                placeholder="관리자 코드 입력"
+                style={{
+                  width: '100%', padding: '12px 14px',
+                  fontSize: 15, fontWeight: 600,
+                  fontFamily: 'var(--font-body)',
+                  background: 'rgba(255,255,255,0.05)',
+                  border: `1px solid ${adminError ? 'rgba(244,63,94,0.5)' : 'rgba(251,191,36,0.2)'}`,
+                  borderRadius: 10, color: '#fff', outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
+              {adminError && (
+                <div style={{ fontSize: 12, color: '#f87171', marginTop: 6, fontWeight: 700 }}>
+                  {adminError}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', margin: '8px 0 20px' }}>
+            <button
+              onClick={() => { setShowAdmin(!showAdmin); setAdminCode(''); setAdminError('') }}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                fontSize: 11, fontWeight: 700, letterSpacing: '0.5px',
+                color: showAdmin ? 'rgba(251,191,36,0.6)' : 'rgba(255,255,255,0.2)',
+                textTransform: 'uppercase',
+              }}
+            >
+              {showAdmin ? '← 일반 로그인' : '관리자 로그인'}
+            </button>
+          </div>
+
+          <button
+            onClick={handleSubmit}
+            disabled={loading}
+            style={{
+              width: '100%', padding: '16px',
+              borderRadius: 14, border: 'none',
+              background: showAdmin
+                ? 'linear-gradient(135deg, #f59e0b, #d97706)'
+                : 'linear-gradient(135deg, #a855f7, #6366f1)',
+              boxShadow: showAdmin
+                ? '0 6px 28px rgba(245,158,11,0.45)'
+                : '0 6px 28px rgba(168,85,247,0.5)',
+              fontFamily: 'var(--font-display)',
+              fontSize: 18, color: '#fff', letterSpacing: '0.5px',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.6 : 1,
+              transition: 'opacity 0.2s',
+              WebkitTapHighlightColor: 'transparent',
             }}
           >
-            {showAdmin ? '일반 로그인으로' : '관리자 로그인'}
+            {loading ? '확인 중...' : showAdmin ? '관리자로 시작하기' : '시작하기 →'}
           </button>
         </div>
-
-        <button
-          onClick={handleSubmit}
-          disabled={loading}
-          style={{
-            width: '100%', padding: '16px', borderRadius: 16, border: 'none',
-            background: showAdmin
-              ? 'linear-gradient(135deg, #f59e0b, #d97706)'
-              : 'linear-gradient(135deg, #a855f7, #6366f1)',
-            boxShadow: showAdmin
-              ? '0 4px 24px rgba(245,158,11,0.4)'
-              : '0 4px 24px rgba(168,85,247,0.45)',
-            fontSize: 16, fontWeight: 800, color: '#fff',
-            cursor: loading ? 'not-allowed' : 'pointer',
-            opacity: loading ? 0.6 : 1,
-            WebkitTapHighlightColor: 'transparent',
-          }}
-        >
-          {loading ? '확인 중...' : showAdmin ? '관리자로 시작하기 →' : '시작하기 →'}
-        </button>
       </div>
     </div>
   )

@@ -1,5 +1,5 @@
 import { rtdb } from './firebase'
-import { ref, set, get, onValue, update, remove, off, runTransaction } from 'firebase/database'
+import { ref, set, get, onValue, update, remove, off, runTransaction, push, query, limitToLast } from 'firebase/database'
 
 // 6자리 룸 코드 생성
 function generateRoomCode(): string {
@@ -18,6 +18,7 @@ export function generateSessionId(): string {
 
 export interface Player {
   displayName: string
+  photoURL?: string
   score: number
   submitted: boolean
   answer?: number | null
@@ -42,7 +43,9 @@ export async function createRoom(
   hostId: string,
   hostName: string,
   eraId: string = '',
-  partId: string = ''
+  partId: string = '',
+  timeLimit: number = 15,
+  photoURL: string = ''
 ): Promise<string> {
   const roomCode = generateRoomCode()
   const roomRef = ref(rtdb, `rooms/${roomCode}`)
@@ -51,7 +54,7 @@ export async function createRoom(
   const snapshot = await get(roomRef)
   if (snapshot.exists()) {
     // 재귀로 다시 생성 (충돌 시)
-    return createRoom(hostId, hostName, eraId, partId)
+    return createRoom(hostId, hostName, eraId, partId, timeLimit, photoURL)
   }
 
   const room: Room = {
@@ -63,10 +66,11 @@ export async function createRoom(
     status: 'waiting',
     currentQuestion: 0,
     questionStartedAt: null,
-    timeLimit: 15,
+    timeLimit,
     players: {
       [hostId]: {
         displayName: hostName,
+        photoURL,
         score: 0,
         submitted: false,
       }
@@ -82,7 +86,8 @@ export async function createRoom(
 export async function joinRoom(
   roomCode: string,
   playerId: string,
-  playerName: string
+  playerName: string,
+  photoURL: string = ''
 ): Promise<Room | null> {
   const roomRef = ref(rtdb, `rooms/${roomCode}`)
   const snapshot = await get(roomRef)
@@ -106,11 +111,12 @@ export async function joinRoom(
   const playerRef = ref(rtdb, `rooms/${roomCode}/players/${playerId}`)
   await set(playerRef, {
     displayName: playerName,
+    photoURL,
     score: 0,
     submitted: false,
   })
 
-  return { ...room, players: { ...room.players, [playerId]: { displayName: playerName, score: 0, submitted: false } } }
+  return { ...room, players: { ...room.players, [playerId]: { displayName: playerName, photoURL, score: 0, submitted: false } } }
 }
 
 // 방 나가기
@@ -255,4 +261,104 @@ export async function updateRoomSelection(
 ): Promise<void> {
   const roomRef = ref(rtdb, `rooms/${roomCode}`)
   await update(roomRef, { eraId, partId })
+}
+
+// 재촉 보내기
+export async function sendNudge(
+  roomCode: string,
+  fromSessionId: string,
+  fromName: string,
+  toSessionId: string
+): Promise<void> {
+  const nudgeRef = ref(rtdb, `nudges/${roomCode}/${toSessionId}`)
+  await set(nudgeRef, {
+    from: fromSessionId,
+    fromName,
+    timestamp: Date.now(),
+  })
+}
+
+// 재촉 구독 (내가 받은 재촉 감지)
+export function subscribeToNudge(
+  roomCode: string,
+  mySessionId: string,
+  callback: (nudge: { from: string; fromName: string; timestamp: number } | null) => void
+): () => void {
+  const nudgeRef = ref(rtdb, `nudges/${roomCode}/${mySessionId}`)
+  onValue(nudgeRef, (snapshot) => {
+    callback(snapshot.exists() ? snapshot.val() : null)
+  })
+  return () => off(nudgeRef)
+}
+
+// 재촉 삭제 (확인 후)
+export async function clearNudge(roomCode: string, mySessionId: string): Promise<void> {
+  const nudgeRef = ref(rtdb, `nudges/${roomCode}/${mySessionId}`)
+  await remove(nudgeRef)
+}
+
+// ─── 채팅 ────────────────────────────────────────────────────────
+
+export interface ChatMessage {
+  sessionId: string
+  displayName: string
+  photoURL?: string
+  message: string
+  timestamp: number
+}
+
+export interface Bubble {
+  message: string
+  timestamp: number
+}
+
+// 채팅 메시지 전송 + 말풍선 업데이트
+export async function sendChatMessage(
+  roomCode: string,
+  sessionId: string,
+  displayName: string,
+  message: string,
+  photoURL?: string
+): Promise<void> {
+  const newMsgRef = push(ref(rtdb, `rooms/${roomCode}/chat`))
+  await set(newMsgRef, {
+    sessionId,
+    displayName,
+    photoURL: photoURL || '',
+    message,
+    timestamp: Date.now(),
+  })
+  await set(ref(rtdb, `rooms/${roomCode}/bubbles/${sessionId}`), {
+    message,
+    timestamp: Date.now(),
+  })
+}
+
+// 채팅 메시지 구독 (최근 50개)
+export function subscribeToChatMessages(
+  roomCode: string,
+  callback: (messages: Array<{ id: string; data: ChatMessage }>) => void
+): () => void {
+  const chatQuery = query(ref(rtdb, `rooms/${roomCode}/chat`), limitToLast(50))
+  onValue(chatQuery, (snapshot) => {
+    if (!snapshot.exists()) { callback([]); return }
+    const msgs: Array<{ id: string; data: ChatMessage }> = []
+    snapshot.forEach((child) => {
+      msgs.push({ id: child.key!, data: child.val() as ChatMessage })
+    })
+    callback(msgs)
+  })
+  return () => off(chatQuery)
+}
+
+// 말풍선 구독 (전체 플레이어의 최신 메시지)
+export function subscribeToBubbles(
+  roomCode: string,
+  callback: (bubbles: Record<string, Bubble>) => void
+): () => void {
+  const bubblesRef = ref(rtdb, `rooms/${roomCode}/bubbles`)
+  onValue(bubblesRef, (snapshot) => {
+    callback(snapshot.exists() ? snapshot.val() as Record<string, Bubble> : {})
+  })
+  return () => off(bubblesRef)
 }

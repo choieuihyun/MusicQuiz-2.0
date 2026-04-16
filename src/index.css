@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Barlow+Condensed:wght@700;900&family=Noto+Sans+KR:wght@400;600;700;900&display=swap');
 
 * {
   box-sizing: border-box;
@@ -6,6 +7,15 @@
 
 body {
   margin: 0;
+  font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+:root {
+  --font-display: 'Black Han Sans', sans-serif;
+  --font-number: 'Barlow Condensed', sans-serif;
+  --font-body: 'Noto Sans KR', -apple-system, sans-serif;
+  --bg-main: radial-gradient(ellipse at 35% -20%, #3d0a6e 0%, #150528 40%, #060412 75%);
+  --bg-accent: radial-gradient(ellipse at 80% 120%, rgba(99,102,241,0.15) 0%, transparent 55%);
 }
 
 @keyframes badgePulse {
@@ -82,7 +92,27 @@ body {
 @keyframes confetti10 { to { transform: translate(-50px, -200px) rotate(800deg) scale(0); opacity: 0; } }
 @keyframes confetti11 { to { transform: translate(50px,  -195px) rotate(-800deg) scale(0); opacity: 0; } }
 
+/* 재촉 흔들기 */
+@keyframes nudgeShake {
+  0%, 100% { transform: translateX(-50%); }
+  10%  { transform: translateX(-50%) translateX(-8px) rotate(-1deg); }
+  20%  { transform: translateX(-50%) translateX(8px) rotate(1deg); }
+  30%  { transform: translateX(-50%) translateX(-6px); }
+  40%  { transform: translateX(-50%) translateX(6px); }
+  50%  { transform: translateX(-50%) translateX(-4px); }
+  60%  { transform: translateX(-50%) translateX(4px); }
+  70%  { transform: translateX(-50%) translateX(-2px); }
+  80%  { transform: translateX(-50%) translateX(2px); }
+}
+
+/* 타이머 바 펄스 (5초 이하) */
+@keyframes timerPulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.6; }
+}
+
 .correct-burst  { animation: correctBurst 0.65s cubic-bezier(0.22,1,0.36,1) both; }
 .wrong-shake    { animation: wrongShake 0.55s cubic-bezier(0.36,0.07,0.19,0.97) both; }
 .result-pop     { animation: resultPop 0.5s cubic-bezier(0.34,1.4,0.64,1) both; }
 .flash-overlay  { animation: flashOverlay 0.7s ease-out forwards; }
+.timer-pulse    { animation: timerPulse 0.5s ease-in-out infinite; }

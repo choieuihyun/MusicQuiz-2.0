@@ -1,18 +1,20 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { usePlayerStore } from '../store/playerStore'
-import { createRoom, joinRoom, deleteRoom, subscribeToRooms } from '../lib/realtimeDB'
+import { joinRoom, deleteRoom, subscribeToRooms } from '../lib/realtimeDB'
 import type { Room } from '../lib/realtimeDB'
 
-const ERA_COLORS: Record<string, string> = {
-  '2000s': '#a855f7', '2010s': '#22d3ee', '2020s': '#f472b6', '': 'rgba(255,255,255,0.35)',
+const ERA_COLORS: Record<string, { from: string; to: string; rgb: string }> = {
+  '2000s': { from: '#a855f7', to: '#6366f1', rgb: '168,85,247' },
+  '2010s': { from: '#22d3ee', to: '#3b82f6', rgb: '34,211,238' },
+  '2020s': { from: '#f472b6', to: '#f43f5e', rgb: '244,114,182' },
+  '':      { from: 'rgba(255,255,255,0.35)', to: 'rgba(255,255,255,0.2)', rgb: '255,255,255' },
 }
 
 export default function Rooms() {
   const navigate = useNavigate()
-  const { sessionId, nickname, isAdmin, setCurrentRoom } = usePlayerStore()
+  const { sessionId, nickname, photoURL, isAdmin, setCurrentRoom } = usePlayerStore()
   const [rooms, setRooms] = useState<Record<string, Room>>({})
-  const [loading, setLoading] = useState(false)
   const [joiningCode, setJoiningCode] = useState<string | null>(null)
   const [error, setError] = useState('')
 
@@ -22,22 +24,11 @@ export default function Rooms() {
     return () => unsubscribe()
   }, [nickname, navigate])
 
-  const handleCreate = async () => {
-    setLoading(true); setError('')
-    try {
-      const roomCode = await createRoom(sessionId, nickname)
-      setCurrentRoom(roomCode)
-      navigate(`/room/${roomCode}`)
-    } catch {
-      setError('방 생성에 실패했습니다')
-    } finally { setLoading(false) }
-  }
-
   const handleJoin = async (roomCode: string) => {
     if (joiningCode) return
     setJoiningCode(roomCode); setError('')
     try {
-      const room = await joinRoom(roomCode, sessionId, nickname)
+      const room = await joinRoom(roomCode, sessionId, nickname, photoURL)
       if (!room) { setError('방을 찾을 수 없습니다'); setJoiningCode(null); return }
       setCurrentRoom(roomCode)
       navigate(`/room/${roomCode}`)
@@ -56,86 +47,102 @@ export default function Rooms() {
   return (
     <div style={{
       minHeight: '100svh',
-      background: 'radial-gradient(ellipse at 50% -10%, #1a0a3e 0%, #0d0820 55%, #060412 100%)',
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      background: 'var(--bg-main)',
+      fontFamily: 'var(--font-body)',
+      position: 'relative',
     }}>
-      <div style={{
-        position: 'fixed', inset: 0, pointerEvents: 'none',
-        background: 'radial-gradient(ellipse at 20% 110%, rgba(99,102,241,0.12) 0%, transparent 55%)',
-      }} />
+      <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', background: 'var(--bg-accent)' }} />
 
+      {/* 헤더 */}
       <header style={{ padding: '56px 20px 24px', position: 'relative' }}>
-        <div style={{ marginBottom: 6 }}>
-          <span style={{ fontSize: 22, fontWeight: 800, color: '#fff' }}>안녕하세요, </span>
-          <span style={{ fontSize: 22, fontWeight: 800, color: '#a855f7' }}>{nickname}</span>
-          <span style={{ fontSize: 22, fontWeight: 800, color: '#fff' }}> 님</span>
-        </div>
-        <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.35)', marginBottom: 20 }}>
-          방을 선택하거나 새로 만들어보세요
-        </div>
+        <button
+          onClick={() => navigate('/')}
+          style={{
+            position: 'absolute', top: 20, left: 20,
+            background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: 12, padding: '8px 14px', cursor: 'pointer',
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            color: 'rgba(255,255,255,0.45)', fontSize: 12, fontWeight: 700,
+            WebkitTapHighlightColor: 'transparent', letterSpacing: '0.5px',
+          }}
+        >
+          <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
+            <path d="M9 2L5 7l4 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          뒤로
+        </button>
 
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button
-            onClick={handleCreate}
-            disabled={loading}
-            style={{
-              flex: 1, padding: '14px 0', borderRadius: 14, border: 'none',
-              background: 'linear-gradient(135deg, #a855f7, #6366f1)',
-              boxShadow: '0 4px 20px rgba(168,85,247,0.4)',
-              fontSize: 15, fontWeight: 800, color: '#fff',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              opacity: loading ? 0.6 : 1,
-              WebkitTapHighlightColor: 'transparent',
-            }}
-          >
-            {loading ? '생성 중...' : '🎮  방 만들기'}
-          </button>
-          <button
-            onClick={() => navigate('/')}
-            style={{
-              padding: '14px 20px', borderRadius: 14,
-              border: '1px solid rgba(255,255,255,0.1)',
-              background: 'rgba(255,255,255,0.05)',
-              fontSize: 14, fontWeight: 700, color: 'rgba(255,255,255,0.55)',
-              cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
-            }}
-          >
-            솔로 플레이
-          </button>
+        <div style={{ paddingTop: 8 }}>
+          <div style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: 34, color: '#fff', letterSpacing: '-0.5px', marginBottom: 4,
+            textShadow: '0 0 50px rgba(34,211,238,0.3)',
+          }}>
+            방 참여하기
+          </div>
+          <div style={{
+            fontSize: 11, fontWeight: 700, letterSpacing: '2px', textTransform: 'uppercase',
+            color: 'rgba(255,255,255,0.3)',
+          }}>
+            참여할 방을 선택하세요
+          </div>
         </div>
 
         {error && (
           <div style={{
-            marginTop: 12, padding: '12px 16px', borderRadius: 12,
-            background: 'rgba(244,63,94,0.15)', border: '1px solid rgba(244,63,94,0.3)',
-            color: '#f43f5e', fontSize: 14, fontWeight: 600,
+            marginTop: 14, padding: '12px 16px', borderRadius: 12,
+            background: 'rgba(244,63,94,0.12)',
+            border: '1px solid rgba(244,63,94,0.3)',
+            borderLeft: '3px solid #f43f5e',
+            color: '#f87171', fontSize: 13, fontWeight: 700,
           }}>
-            {error}
+            ⚠ {error}
           </div>
         )}
       </header>
 
-      <main style={{ padding: '0 20px 40px', position: 'relative' }}>
+      <main style={{ padding: '0 18px 48px', position: 'relative' }}>
+        {/* 카운트 레이블 */}
         <div style={{
-          fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.3)',
-          marginBottom: 14, letterSpacing: '0.5px', textTransform: 'uppercase',
+          fontSize: 10, fontWeight: 700, letterSpacing: '2px', textTransform: 'uppercase',
+          color: 'rgba(255,255,255,0.25)', marginBottom: 12,
         }}>
           열린 방 {waitingRooms.length > 0 ? `(${waitingRooms.length})` : ''}
         </div>
 
         {waitingRooms.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '60px 0', color: 'rgba(255,255,255,0.2)' }}>
-            <div style={{ fontSize: 44, marginBottom: 14 }}>🎵</div>
-            <div style={{ fontSize: 15, fontWeight: 600 }}>열린 방이 없어요</div>
-            <div style={{ fontSize: 13, marginTop: 6 }}>방을 만들어 친구를 초대해보세요</div>
+          <div style={{ textAlign: 'center', padding: '64px 0' }}>
+            <div style={{ fontSize: 48, marginBottom: 16, filter: 'drop-shadow(0 0 20px rgba(168,85,247,0.4))' }}>🎵</div>
+            <div style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: 22, color: 'rgba(255,255,255,0.4)', marginBottom: 8,
+            }}>
+              열린 방이 없어요
+            </div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.2)', marginBottom: 24 }}>
+              방을 만들어 친구를 초대해보세요
+            </div>
+            <button
+              onClick={() => navigate('/create')}
+              style={{
+                padding: '12px 28px', borderRadius: 14, border: 'none',
+                background: 'linear-gradient(135deg, #a855f7, #6366f1)',
+                fontFamily: 'var(--font-display)',
+                fontSize: 16, color: '#fff', cursor: 'pointer',
+                boxShadow: '0 6px 20px rgba(168,85,247,0.4)',
+                letterSpacing: '0.5px',
+              }}
+            >
+              방 만들러 가기 →
+            </button>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {waitingRooms.map(([roomCode, room]) => {
               const playerCount = Object.keys(room.players ?? {}).length
               const isJoining = joiningCode === roomCode
-              const color = ERA_COLORS[room.eraId] ?? ERA_COLORS['']
-              const hasSelection = room.eraId && room.partId
+              const eraColor = ERA_COLORS[room.eraId] ?? ERA_COLORS['']
+              const hasSelection = !!(room.eraId && room.partId)
 
               return (
                 <div key={roomCode} style={{ position: 'relative' }}>
@@ -143,52 +150,85 @@ export default function Rooms() {
                     onClick={() => handleJoin(roomCode)}
                     disabled={!!joiningCode}
                     style={{
-                      background: 'rgba(255,255,255,0.05)',
-                      backdropFilter: 'blur(12px)',
-                      border: '1px solid rgba(255,255,255,0.1)',
-                      borderRadius: 20, padding: '18px 20px',
-                      display: 'flex', alignItems: 'center', gap: 14,
+                      width: '100%',
+                      background: hasSelection
+                        ? `rgba(${eraColor.rgb},0.06)`
+                        : 'rgba(255,255,255,0.04)',
+                      backdropFilter: 'blur(16px)',
+                      border: `1px solid rgba(${eraColor.rgb},0.18)`,
+                      borderLeft: `4px solid ${hasSelection ? eraColor.from : 'rgba(255,255,255,0.15)'}`,
+                      borderRadius: 18, padding: '0',
                       cursor: joiningCode ? 'not-allowed' : 'pointer',
                       textAlign: 'left',
-                      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.07)',
-                      opacity: joiningCode && !isJoining ? 0.5 : 1,
+                      boxShadow: `0 4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06)`,
+                      opacity: joiningCode && !isJoining ? 0.45 : 1,
                       WebkitTapHighlightColor: 'transparent',
-                      width: '100%',
+                      overflow: 'hidden',
+                      transition: 'opacity 0.2s',
                     }}
                   >
-                    <div style={{
-                      width: 52, height: 52, borderRadius: 14, fontSize: 24,
-                      background: `linear-gradient(135deg, ${color}33, ${color}18)`,
-                      border: `1px solid ${color}44`,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      flexShrink: 0,
-                    }}>
-                      {isJoining ? '⏳' : '🎮'}
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 16, fontWeight: 700, color: '#fff', marginBottom: 4 }}>
-                        {room.hostName ?? '알 수 없음'}의 방
+                    <div style={{ padding: '16px 18px', display: 'flex', alignItems: 'center', gap: 14 }}>
+                      {/* 아이콘 */}
+                      <div style={{
+                        width: 48, height: 48, borderRadius: 13, fontSize: 20, flexShrink: 0,
+                        background: hasSelection
+                          ? `linear-gradient(135deg, rgba(${eraColor.rgb},0.3), rgba(${eraColor.rgb},0.1))`
+                          : 'rgba(255,255,255,0.07)',
+                        border: `1px solid rgba(${eraColor.rgb},0.25)`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        {isJoining ? '⏳' : '🎮'}
                       </div>
-                      <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)', letterSpacing: 1 }}>
-                        {roomCode}
-                        {hasSelection && (
-                          <span style={{ marginLeft: 8, color, fontWeight: 600 }}>
-                            {room.eraId} · Part.{room.partId}
-                          </span>
+
+                      {/* 방 정보 */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: '#fff', marginBottom: 4 }}>
+                          {room.hostName ?? '알 수 없음'}의 방
+                        </div>
+                        {hasSelection ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{
+                              fontFamily: 'var(--font-number)',
+                              fontSize: 12, fontWeight: 700, color: eraColor.from,
+                              background: `rgba(${eraColor.rgb},0.15)`,
+                              padding: '2px 8px', borderRadius: 6,
+                            }}>
+                              {room.eraId}
+                            </span>
+                            <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', fontWeight: 700 }}>
+                              Part.{room.partId}
+                            </span>
+                            <span style={{
+                              fontFamily: 'var(--font-number)',
+                              fontSize: 11, color: 'rgba(255,255,255,0.2)', letterSpacing: 1,
+                            }}>
+                              · {roomCode}
+                            </span>
+                          </div>
+                        ) : (
+                          <div style={{
+                            fontFamily: 'var(--font-number)',
+                            fontSize: 11, color: 'rgba(255,255,255,0.25)', letterSpacing: 1,
+                          }}>
+                            {roomCode} · 파트 선택 중
+                          </div>
                         )}
                       </div>
-                    </div>
-                    <div style={{
-                      fontSize: 13, fontWeight: 700, color,
-                      background: `${color}22`, padding: '5px 10px',
-                      borderRadius: 8, flexShrink: 0,
-                      marginRight: isAdmin ? 36 : 0,
-                    }}>
-                      {playerCount}/10
+
+                      {/* 인원 */}
+                      <div style={{
+                        fontFamily: 'var(--font-number)',
+                        fontSize: 14, fontWeight: 700, color: eraColor.from,
+                        background: `rgba(${eraColor.rgb},0.12)`,
+                        padding: '5px 10px', borderRadius: 8, flexShrink: 0,
+                        marginRight: isAdmin ? 38 : 0,
+                        letterSpacing: '0.5px',
+                      }}>
+                        {playerCount}/10
+                      </div>
                     </div>
                   </button>
 
-                  {/* 어드민 삭제 버튼 */}
                   {isAdmin && (
                     <button
                       onClick={(e) => { e.stopPropagation(); handleDelete(roomCode) }}
@@ -196,12 +236,11 @@ export default function Rooms() {
                         position: 'absolute', top: '50%', right: 16,
                         transform: 'translateY(-50%)',
                         width: 34, height: 34, borderRadius: 10,
-                        background: 'rgba(244,63,94,0.2)',
-                        border: '1px solid rgba(244,63,94,0.4)',
-                        color: '#f43f5e', fontSize: 15,
+                        background: 'rgba(244,63,94,0.15)',
+                        border: '1px solid rgba(244,63,94,0.35)',
+                        color: '#f43f5e', fontSize: 14,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        cursor: 'pointer',
-                        WebkitTapHighlightColor: 'transparent',
+                        cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
                       }}
                     >
                       🗑️

@@ -7,6 +7,7 @@ import {
 export interface ScoreEntry {
   sessionId: string
   nickname: string
+  photoURL?: string
   eraId: string
   partId: string
   score: number
@@ -21,7 +22,8 @@ export async function saveScore(
   eraId: string,
   partId: string,
   score: number,
-  total: number
+  total: number,
+  photoURL: string = ''
 ): Promise<void> {
   const docId = `${sessionId}_${eraId}_${partId}`
   const docRef = doc(db, 'scores', docId)
@@ -39,6 +41,7 @@ export async function saveScore(
   await setDoc(docRef, {
     sessionId,
     nickname,
+    photoURL,
     eraId,
     partId,
     score,
