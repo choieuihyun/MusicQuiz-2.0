@@ -410,5 +410,23 @@ Firebase 3개 서비스 역할 분담:
 > - Firestore `musicquizdb`에 Part.1 50곡 업로드 실행 (`bun run scripts/importQuiz.mjs`)
 > - 랭킹 첫 조회 시 복합 인덱스 생성 (`partId + score desc`)
 > - Part.2 / Part.3 / Part.4 문제 데이터 추가
-> - Firebase Storage 음악 업로드 + MusicPlayer 연결
 > - Security Rules 설정 (RTDB + Firestore + Storage)
+
+---
+
+## 2026-04-17
+
+### Firebase Storage 음악 연결 + MusicPlayer 통합
+
+**`src/lib/firestore.ts`**
+- `firebase/storage`에서 `ref`, `getDownloadURL` import 추가
+- `getMusicURL(partId, songTitle)` 함수 추가
+  - Storage 경로: `secondMusicQuiz/{songTitle}.mp3`
+  - 파일 없으면 `''` 반환 → 플레이어 비활성화 상태 유지
+
+**`src/pages/MultiQuiz.tsx`**
+- `MusicPlayer` 컴포넌트 import 추가
+- `getMusicURL` import 추가
+- `currentMusicURL` state 추가
+- `room.currentQuestion` 변경 시 Storage에서 해당 곡 URL 자동 fetch (useEffect)
+- 가사 카드 위에 `MusicPlayer` 렌더링 — 파트 컬러(`rgb`, `from`, `to`) 연동

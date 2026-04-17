@@ -7,7 +7,8 @@ import {
   sendChatMessage, subscribeToChatMessages, subscribeToBubbles,
 } from '../lib/realtimeDB'
 import type { Room, ChatMessage, Bubble } from '../lib/realtimeDB'
-import { saveScore, getPartQuestions } from '../lib/firestore'
+import { saveScore, getPartQuestions, getMusicURL } from '../lib/firestore'
+import MusicPlayer from '../components/MusicPlayer'
 import { partMeta } from '../lib/parts'
 import type { QuizQuestion } from '../types/quiz'
 
@@ -76,6 +77,7 @@ export default function MultiQuiz() {
 
   const [questions, setQuestions] = useState<QuizQuestion[]>([])
   const [questionsLoaded, setQuestionsLoaded] = useState(false)
+  const [currentMusicURL, setCurrentMusicURL] = useState('')
 
   // 파트 문제 로드 (Firestore)
   useEffect(() => {
@@ -85,6 +87,18 @@ export default function MultiQuiz() {
       .then(qs => { setQuestions(qs); setQuestionsLoaded(true) })
       .catch(err => { console.error('[문제 로드 실패]', err); setQuestionsLoaded(true) })
   }, [room?.partId])
+
+  // 현재 문제 음악 URL 로드 (Storage)
+  useEffect(() => {
+    const partId = room?.partId
+    const qIndex = room?.currentQuestion ?? 0
+    const song = questions[qIndex]?.song
+    if (!partId || !song) return
+    setCurrentMusicURL('')
+    getMusicURL(partId, song)
+      .then((url: string) => setCurrentMusicURL(url))
+      .catch(() => setCurrentMusicURL(''))
+  }, [room?.partId, room?.currentQuestion, questions])
 
   const meta = partMeta(room?.partId ?? '')
   const isHost = room?.hostId === sessionId
@@ -1009,6 +1023,14 @@ export default function MultiQuiz() {
 
       {/* 가사 + 선택지 영역 */}
       <div style={{ padding: '0 14px', flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+        {/* 뮤직 플레이어 */}
+        <MusicPlayer
+          tracks={[{ title: q.song, artist: q.artist, src: currentMusicURL }]}
+          rgb={meta.rgb}
+          colorFrom={meta.from}
+          colorTo={meta.to}
+        />
 
         {/* 가사 카드 */}
         <div style={{

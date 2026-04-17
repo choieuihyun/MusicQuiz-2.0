@@ -1,8 +1,9 @@
-import { db } from './firebase'
+import { db, storage } from './firebase'
 import {
   collection, doc, setDoc, getDoc, getDocs,
   query, where, orderBy, limit,
 } from 'firebase/firestore'
+import { ref, getDownloadURL } from 'firebase/storage'
 import type { QuizQuestion } from '../types/quiz'
 
 export interface ScoreEntry {
@@ -64,4 +65,10 @@ export async function getPartRanking(
 export async function getPartQuestions(partId: string): Promise<QuizQuestion[]> {
   const snapshot = await getDocs(collection(db, 'quizzes', partId, 'questions'))
   return snapshot.docs.map(d => d.data() as QuizQuestion)
+}
+
+// 음악 파일 Storage URL 조회 — secondMusicQuiz/{songTitle}.mp3
+export async function getMusicURL(_partId: string, songTitle: string): Promise<string> {
+  const storageRef = ref(storage, `secondMusicQuiz/${songTitle}.mp3`)
+  return getDownloadURL(storageRef)
 }

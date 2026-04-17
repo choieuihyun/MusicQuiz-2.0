@@ -17,7 +17,7 @@
 | 인증 | 닉네임 전용 (비밀번호 없음) + 어드민 코드 |
 | 솔로 점수/랭킹 DB | Firebase Firestore |
 | 멀티플레이어 실시간 동기화 | Firebase Realtime Database |
-| 음악 파일 저장 | Firebase Storage (미연결) |
+| 음악 파일 저장 | Firebase Storage (`secondMusicQuiz/`) ✅ |
 | 호스팅 | (미정) |
 
 ---
@@ -180,11 +180,11 @@ query(
 ### Firebase Storage
 
 ```
-profiles/{sessionId}         # 프로필 사진 (로그인 시 업로드) ✅
-music/{partId}/{songTitle}.mp3   # 음악 파일 (미연결)
+profiles/{sessionId}              # 프로필 사진 (로그인 시 업로드) ✅
+secondMusicQuiz/{songTitle}.mp3   # 음악 파일 ✅
 ```
 - 프로필 사진: 로그인 시 업로드 → `getDownloadURL()` → playerStore / RTDB / Firestore에 URL 저장
-- 음악 파일: 해당 경로 다운로드 URL → `MusicPlayer` `src`에 주입 (미연결)
+- 음악 파일: `getMusicURL(partId, songTitle)` → `secondMusicQuiz/{songTitle}.mp3` → `MusicPlayer` `src`에 주입 ✅
 
 ---
 
@@ -296,7 +296,7 @@ interface PlayerState {
 - [x] Firestore 퀴즈 데이터 로드 (mockData 교체) — `getPartQuestions`
 - [x] Part.1 문제 50곡 임포트 (`scripts/importQuiz.mjs`)
 - [ ] Part.2 / Part.3 / Part.4 문제 데이터 입력
-- [ ] Firebase Storage 음악 업로드 + 플레이어 연결
+- [x] Firebase Storage 음악 업로드 + 플레이어 연결 (`secondMusicQuiz/{songTitle}.mp3` → MusicPlayer)
 
 ### 3단계 — 멀티플레이어
 - [x] 방 목록 화면 (Rooms.tsx) — 파트 표기 포함
