@@ -512,3 +512,90 @@ Firebase 3개 서비스 역할 분담:
 ### Firestore `musicquizdb`에 50곡 초기 업로드 완료
 - `bun run scripts/importQuiz.mjs` 로 Part.1 50곡 저장 성공 (`quizzes/1/questions/1~50`)
 - 브라우저 콘솔에서 `[문제 로드 성공] 50 곡` 로그 확인
+
+### 다음 문제 전환 시 "오답!" 즉시 팝업 버그 수정
+
+**증상**: 타임아웃으로 오답 처리된 문제에서 "다음 문제" 누르자마자 새 문제에 "오답!" 팝업이 뜸.
+
+**원인**: 레이스 컨디션.
+1. 문제 N에서 타임아웃 → 자동 제출(-1) → `revealed=true`
+2. 호스트 "다음 문제" → 방 구독 콜백에서 `selected/revealed/localSubmitted`만 리셋
+3. `musicEndedAt` 리셋은 별도 effect(`[room?.currentQuestion]` 의존)에서 수행 — 이는 render 이후 실행
+4. 같은 render cycle에서 타이머 effect가 클로저에 캡처된 OLD `musicEndedAt`을 읽음 → `elapsed` 매우 큰 값 → `remaining <= 0` → 즉시 `submitAnswer(-1)` 발동
+5. 혼자(솔로 테스트) 또는 나 혼자 남은 방이면 `allDone=true` → 새 문제에 `revealed=true` → "오답!" 팝업
+
+**수정** — `MultiQuiz.tsx` 방 구독 콜백에서 문제 전환 감지 시 `musicEndedAt / timeLeft / flash / showConfetti` 까지 같은 배치로 리셋. 기존 별도 `useEffect([room?.currentQuestion])` reset 블록은 중복이라 제거.
+
+### 비동기 fetch 레이스 — stale resolve 방지
+
+**잠재 문제**: 느린 네트워크에서 Q1 음악/문제 fetch 중 Q2로 전환 시, 뒤늦게 resolve되는 Q1 fetch가 Q2의 URL/데이터를 덮어쓸 수 있음.
+
+**수정** — `MultiQuiz.tsx` 두 effect에 cancelled 플래그 + cleanup 추가:
+- 음악 URL 로드 (`getMusicURL`) — Q1 Promise가 Q2 전환 후 resolve돼도 state 반영 안 됨
+- 문제 로드 (`getPartQuestions`) — 파트 변경 시 이전 fetch 무시
+
+패턴:
+```ts
+let cancelled = false
+fetch().then(r => { if (cancelled) return; setState(r) })
+return () => { cancelled = true }
+```
+
+### 방장 강제 스킵 — 미제출자 처리 대비
+
+**배경**: "다음 문제"는 전원 제출한 뒤에만 진행되도록 유지. 하지만 참가자가 중간에 웹을 닫아버리면 그 플레이어의 로컬 타이머가 멈춰 자동 오답 제출이 안 돼 방이 멈춘 상태가 될 수 있음. 이 경우 방장이 수동으로 진행할 수 있도록 강제 스킵 추가.
+
+**`src/lib/realtimeDB.ts`**
+- `forceSubmitAll(roomCode)` 신규 — 미제출 플레이어 전원에 `submitted: true, answer: -1` 기록. 점수는 가산 안 됨(기본 오답).
+- 실행 후 기존 "전원 제출 감지" 구독 로직이 자동으로 `revealed=true` 전환 → 방장이 "다음 문제" 정상 클릭
+
+**`src/pages/MultiQuiz.tsx`**
+- `forceSubmitAll` import + `handleSkip()` 핸들러 추가
+- 제출 대기 UI 아래에 방장 전용 "⏭ 건너뛰기 (미제출 N명 강제 처리)" 버튼 노출
+  - 노출 조건: `isHost && !revealed && 미제출자 ≥ 1명`
+  - 핑크 accent bar + 준비-액센트 색상으로 emergency UI 구분
+  - 클릭 시 미제출자 수를 표시해 방장이 현황 인지 가능
+
+### Storage 파일명 대소문자 정렬 — 404 복구
+- `scripts/importQuiz.mjs` 내 `title` 필드 교정:
+  - `longDaylongNight` → `longDayLongNight` (row 33, 악동뮤지션 — 오랜날 오랜밤)
+  - `badboy` → `badBoy` (row 38, 레드벨벳)
+- Firebase Storage가 case-sensitive라 `180Angle.mp3` ≠ `180angle.mp3`. 다른 곡들도 이슈 있으면 콘솔에서 파일명 확인해서 `title` 값 맞추는 식으로 해결.
+- 수정 후 `bun run scripts/importQuiz.mjs` 재실행으로 Firestore 문서 덮어쓰기
+
+### 음악 감상 후에만 문항 답변 가능 (UX 잠금)
+
+**배경**: 음악 재생 중에도 선택지가 보이고 클릭 가능해서 "음악 먼저 집중해서 듣고 답하기" 설계 의도가 약함.
+
+**`src/pages/MultiQuiz.tsx`**
+- `handleSelect(optionId)` 가드에 `if (!musicEndedAt) return` 추가 → 음악 종료 전 선택 무시
+- 선택지 버튼 `disabled`/`cursor`/`opacity` 조건에 `!musicEndedAt` 반영
+
+### 선택지 블러 처리 — 음악 첫 재생 끝나야 공개
+
+**의도**: 음악에 100% 집중 유도 + "블러 해제 → 선택지 등장 → 타이머 시작" 드라마틱한 UX.
+
+**`src/pages/MultiQuiz.tsx`**
+- 선택지 버튼 style에 `filter: blur(8px)` + 0.6s ease 트랜지션 적용
+- `isBlurred = !musicEndedAt && !revealed` 조건 — 음악 첫 재생 종료 시점에 자연스럽게 선명해짐
+- `userSelect: 'none'` 동시 적용 — 블러 상태에서 텍스트 드래그로 읽지 못하게
+
+### 음악 반복 재생 (loop) — 다음 문제 전까지 자동 재시작
+
+**배경**: 처음 재생 한 번만 듣고 15초 안에 못 고르면 막막함. 다음 문제로 넘어가기 전까지 음악은 계속 들리는 게 UX에 자연스러움.
+
+**`src/components/MusicPlayer.tsx`**
+- `loop?: boolean` prop 추가 — true일 때 audio `ended` 이벤트에서 `currentTime=0` + `play()` 로 재시작
+- `onEnded` 콜백은 첫 종료 시 동일하게 호출 → 부모의 `musicEndedAt` 로직에는 변화 없음 (첫 재생 완료 시점에 타이머 시작)
+
+**`src/pages/MultiQuiz.tsx`**
+- `<MusicPlayer loop />` 전달
+- 문제 전환 시 MusicPlayer 트랙 리셋 effect(`[track?.src]`)가 자동으로 `audio.load()` + `setPlaying(false)` 처리 → 반복 루프가 끊김
+
+### saveScore / getPartRanking 진단 로그 + try-catch
+- `saveScore`: 저장 성공/실패/스킵(기존 점수가 더 높을 때) 분기별 console.log 추가
+- `getPartRanking`: 실패 시 "복합 인덱스 필요" 안내 console.error
+- 랭킹 미반영 원인 파악용 — 실제 원인은 대부분:
+  1. Firestore 복합 인덱스(`partId + score desc`) 미생성 → 첫 쿼리 시 에러 메시지에 링크 클릭해 생성
+  2. 기존 점수가 더 높아서 저장 스킵됨 (정상 동작)
+  3. RTDB room.status가 'result' 전환 전에 유저가 나가서 useEffect 미실행

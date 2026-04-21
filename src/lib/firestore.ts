@@ -28,21 +28,30 @@ export async function saveScore(
   const docId = `${sessionId}_${partId}`
   const docRef = doc(db, 'scores', docId)
 
-  const existing = await getDoc(docRef)
-  if (existing.exists()) {
-    const prev = existing.data() as ScoreEntry
-    if (prev.score >= score) return
-  }
+  try {
+    const existing = await getDoc(docRef)
+    if (existing.exists()) {
+      const prev = existing.data() as ScoreEntry
+      if (prev.score >= score) {
+        console.log('[점수 저장 스킵] 기존 점수가 더 높음', { prev: prev.score, new: score })
+        return
+      }
+    }
 
-  await setDoc(docRef, {
-    sessionId,
-    nickname,
-    photoURL,
-    partId,
-    score,
-    total,
-    playedAt: Date.now(),
-  })
+    await setDoc(docRef, {
+      sessionId,
+      nickname,
+      photoURL,
+      partId,
+      score,
+      total,
+      playedAt: Date.now(),
+    })
+    console.log('[점수 저장 성공]', { docId, score, total, partId })
+  } catch (err) {
+    console.error('[점수 저장 실패]', err)
+    throw err
+  }
 }
 
 // 파트별 랭킹 조회 (상위 10명)
@@ -51,14 +60,21 @@ export async function getPartRanking(
   partId: string,
   limitCount = 10
 ): Promise<ScoreEntry[]> {
-  const q = query(
-    collection(db, 'scores'),
-    where('partId', '==', partId),
-    orderBy('score', 'desc'),
-    limit(limitCount)
-  )
-  const snapshot = await getDocs(q)
-  return snapshot.docs.map(d => d.data() as ScoreEntry)
+  try {
+    const q = query(
+      collection(db, 'scores'),
+      where('partId', '==', partId),
+      orderBy('score', 'desc'),
+      limit(limitCount)
+    )
+    const snapshot = await getDocs(q)
+    const entries = snapshot.docs.map(d => d.data() as ScoreEntry)
+    console.log('[랭킹 조회 성공] partId=' + partId, entries.length + '명')
+    return entries
+  } catch (err) {
+    console.error('[랭킹 조회 실패] — 복합 인덱스 필요 시 에러 메시지의 링크 클릭', err)
+    throw err
+  }
 }
 
 // 파트별 퀴즈 문제 로드

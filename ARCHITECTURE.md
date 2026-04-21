@@ -98,6 +98,7 @@ rooms/{roomCode}
   ├─ status: "waiting" | "playing" | "result" | "finished"
   ├─ currentQuestion: number
   ├─ questionStartedAt: number | null
+  ├─ musicStartedAt?: number | null   # 방장 "▶ 재생" → 3초 카운트다운 종료 시각 (동시 재생 트리거)
   ├─ timeLimit: number         # 방 생성 시 선택 (10 / 15 / 20 / 30초)
   ├─ createdAt: number
   │
@@ -131,11 +132,15 @@ rooms/{roomCode}/bubbles/{sessionId}
 → / (랜딩 — 방 생성하기 / 방 참여하기)
 → 방 생성: /create (파트/타이머 선택) → createRoom → /room/:roomCode
 → 방 참여: /rooms (방 목록) → joinRoom → /room/:roomCode
-→ /room/:roomCode (대기실 — 파트 확정 표시, 참가자 목록)
+→ /room/:roomCode (대기실 — 파트 확정 표시, 참가자 목록, 채팅)
 → 방장 "게임 시작" 클릭 → status: playing
 → /multi/:roomCode (실시간 퀴즈 진행 — Firestore에서 파트별 문제 로드)
-→ 전원 제출 or 타이머 만료 → 정답 공개 → 방장이 다음 문제 진행
-→ 마지막 문제 후 결과 화면 → Firestore 점수 저장
+   ├─ 방장 "▶ 재생" 클릭 → 3,2,1 카운트다운 오버레이 → 전원 동시 재생
+   ├─ 첫 재생 종료 시 musicEndedAt 기록 → 15초 타이머 시작 / 선택지 블러 해제 + 클릭 활성화
+   ├─ 음악은 다음 문제로 넘어가기 전까지 loop 재생
+   ├─ 전원 제출(직접/타임아웃/방장 강제스킵) → revealed=true → 정답 공개
+   └─ 방장 "다음 문제" 클릭 → 다음 문제
+→ 마지막 문제 종료 → 결과 화면 → 전원 자기 점수 Firestore에 저장(최고 점수 유지)
 ```
 
 ---
@@ -226,6 +231,7 @@ interface Room {
   status: 'waiting' | 'playing' | 'result' | 'finished'
   currentQuestion: number
   questionStartedAt: number | null
+  musicStartedAt?: number | null   // 방장 "▶ 재생" 후 3초 카운트다운 종료 시각
   timeLimit: number
   players: Record<string, Player>
   createdAt: number
@@ -299,7 +305,12 @@ interface PlayerState {
 - [x] Firestore 퀴즈 데이터 로드 (mockData 교체) — `getPartQuestions`
 - [x] Part.1 문제 50곡 임포트 (`scripts/importQuiz.mjs`)
 - [ ] Part.2 / Part.3 / Part.4 문제 데이터 입력
-- [x] Firebase Storage 음악 업로드 + 플레이어 연결 (`secondMusicQuiz/{songTitle}.mp3` → MusicPlayer)
+- [x] Firebase Storage 음악 업로드 + 플레이어 연결 (`secondMusicQuiz/{title}.mp3` → MusicPlayer, 영문 title 키)
+- [x] 음악 재생 동기화 (방장 컨트롤 + 3,2,1 카운트다운 + 동시 play)
+- [x] 음악 loop 재생 (다음 문제 전까지 반복)
+- [x] 선택지 블러 처리 (첫 재생 종료 후 공개)
+- [x] 방장 "⏭ 건너뛰기" — 미제출자 강제 처리
+- [x] 제출 현황 실시간 스트립 (아바타 + N/M SUBMITTED)
 
 ### 3단계 — 멀티플레이어
 - [x] 방 목록 화면 (Rooms.tsx) — 파트 표기 포함

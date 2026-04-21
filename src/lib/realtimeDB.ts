@@ -205,6 +205,25 @@ export async function submitAnswer(
   })
 }
 
+// 방장이 미제출 플레이어 전원 강제 오답 처리 (스킵용)
+// — 제출 안 한 참가자를 -1(오답)로 기록해 '전원 제출' 상태로 만듦
+// — 이후 MultiQuiz 구독 로직이 자동으로 정답 공개(revealed=true)로 전환
+export async function forceSubmitAll(roomCode: string): Promise<void> {
+  const room = await getRoom(roomCode)
+  if (!room) return
+  const roomRef = ref(rtdb, `rooms/${roomCode}`)
+  const updates: Record<string, unknown> = {}
+  Object.entries(room.players ?? {}).forEach(([pid, player]) => {
+    if (!player.submitted) {
+      updates[`players/${pid}/submitted`] = true
+      updates[`players/${pid}/answer`] = -1
+    }
+  })
+  if (Object.keys(updates).length > 0) {
+    await update(roomRef, updates)
+  }
+}
+
 // 결과 화면으로 전환
 export async function showResult(roomCode: string): Promise<void> {
   const roomRef = ref(rtdb, `rooms/${roomCode}`)

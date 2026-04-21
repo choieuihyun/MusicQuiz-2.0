@@ -5,7 +5,7 @@ import {
   subscribeToRoom, submitAnswer, nextQuestion, showResult,
   sendNudge, subscribeToNudge, clearNudge,
   sendChatMessage, subscribeToChatMessages, subscribeToBubbles,
-  startMusic,
+  startMusic, forceSubmitAll,
 } from '../lib/realtimeDB'
 import type { Room, ChatMessage, Bubble } from '../lib/realtimeDB'
 import { saveScore, getPartQuestions, getMusicURL } from '../lib/firestore'
@@ -88,17 +88,21 @@ export default function MultiQuiz() {
     const partId = room?.partId
     console.log('[문제 로드 체크] room=', !!room, 'partId=', partId)
     if (!partId) return
+    let cancelled = false
     console.log('[문제 로드 시도] quizzes/' + partId + '/questions')
     getPartQuestions(partId)
       .then(qs => {
+        if (cancelled) return
         console.log('[문제 로드 성공]', qs.length, '곡')
         setQuestions(qs)
         setQuestionsLoaded(true)
       })
       .catch(err => {
+        if (cancelled) return
         console.error('[문제 로드 실패]', err)
         setQuestionsLoaded(true)
       })
+    return () => { cancelled = true }
   }, [room?.partId])
 
   // 현재 문제 음악 URL 로드 (Storage — title 기준)
@@ -107,17 +111,21 @@ export default function MultiQuiz() {
     const qIndex = room?.currentQuestion ?? 0
     const key = questions[qIndex]?.title
     if (!partId || !key) return
+    let cancelled = false
     setCurrentMusicURL('')
     console.log('[음악 로드 시도]', `secondMusicQuiz/${key}.mp3`)
     getMusicURL(partId, key)
       .then((url: string) => {
+        if (cancelled) return
         console.log('[음악 로드 성공]', key)
         setCurrentMusicURL(url)
       })
       .catch((err) => {
+        if (cancelled) return
         console.error('[음악 로드 실패]', key, err?.code ?? err?.message ?? err)
         setCurrentMusicURL('')
       })
+    return () => { cancelled = true }
   }, [room?.partId, room?.currentQuestion, questions])
 
   // 방장의 재생 시작 → 3,2,1 카운트다운 → 동시 재생
@@ -180,6 +188,10 @@ export default function MultiQuiz() {
         setSelected(null)
         setRevealed(false)
         setLocalSubmitted(false)
+        setMusicEndedAt(null)
+        setTimeLeft(null)
+        setFlash(null)
+        setShowConfetti(false)
       }
       const allDone = Object.values(roomData.players ?? {}).every(p => p.submitted)
       if (allDone && !revealed && roomData.status === 'playing') {
@@ -197,12 +209,6 @@ export default function MultiQuiz() {
     })
     return () => unsubscribe()
   }, [roomCode, room?.currentQuestion, revealed, navigate, setCurrentRoom, sessionId, questions])
-
-  // 문제 바뀌면 음악 종료 시각 리셋
-  useEffect(() => {
-    setMusicEndedAt(null)
-    setTimeLeft(null)
-  }, [room?.currentQuestion])
 
   // 타이머 — 음악이 끝난 시점부터 카운트다운 시작
   useEffect(() => {
@@ -303,6 +309,7 @@ export default function MultiQuiz() {
 
   const handleSelect = (optionId: number) => {
     if (revealed || localSubmitted) return
+    if (!musicEndedAt) return  // 음악 재생 전/중엔 선택 불가
     setSelected(optionId)
   }
 
@@ -322,6 +329,11 @@ export default function MultiQuiz() {
   const handleStartMusic = async () => {
     if (!roomCode || !isHost || room?.musicStartedAt) return
     await startMusic(roomCode)
+  }
+
+  const handleSkip = async () => {
+    if (!roomCode || !isHost || revealed) return
+    await forceSubmitAll(roomCode)
   }
 
   const handleGoHome = () => {
@@ -1218,6 +1230,7 @@ export default function MultiQuiz() {
           colorFrom={meta.from}
           colorTo={meta.to}
           controlled
+          loop
           playSignal={playSignal}
           onEnded={() => { if (!musicEndedAt) setMusicEndedAt(Date.now()) }}
         />
@@ -1311,11 +1324,12 @@ export default function MultiQuiz() {
               textColor = meta.from
             }
 
+            const isBlurred = !musicEndedAt && !revealed
             return (
               <button
                 key={opt.id}
                 onClick={() => handleSelect(opt.id)}
-                disabled={revealed || localSubmitted}
+                disabled={revealed || localSubmitted || !musicEndedAt}
                 style={{
                   width: '100%',
                   background: bg,
@@ -1323,10 +1337,12 @@ export default function MultiQuiz() {
                   borderLeft,
                   borderRadius: 13, padding: '13px 14px',
                   display: 'flex', alignItems: 'center', gap: 12,
-                  cursor: revealed || localSubmitted ? 'default' : 'pointer',
+                  cursor: revealed || localSubmitted || !musicEndedAt ? 'default' : 'pointer',
                   textAlign: 'left',
-                  opacity: localSubmitted && !revealed ? 0.55 : 1,
-                  transition: 'background 0.15s, border-color 0.15s',
+                  opacity: isBlurred ? 0.85 : (localSubmitted && !revealed ? 0.55 : 1),
+                  filter: isBlurred ? 'blur(8px)' : 'none',
+                  userSelect: isBlurred ? 'none' : 'auto',
+                  transition: 'background 0.15s, border-color 0.15s, filter 0.6s ease, opacity 0.3s ease',
                 }}
               >
                 <div style={{
@@ -1377,6 +1393,29 @@ export default function MultiQuiz() {
           }}>
             다른 참가자를 기다리는 중...
           </div>
+        )}
+
+        {/* 방장 강제 스킵 — 미제출자 있을 때만 노출 */}
+        {isHost && !revealed && players.some(([, p]) => !p.submitted) && (
+          <button
+            onClick={handleSkip}
+            style={{
+              width: '100%', marginTop: 4, padding: '11px',
+              borderRadius: 12,
+              background: 'rgba(244,114,182,0.12)',
+              border: '1px solid rgba(244,114,182,0.35)',
+              borderLeft: '3px solid #f472b6',
+              fontFamily: 'var(--font-body)',
+              fontSize: 13, fontWeight: 800,
+              color: '#f472b6', letterSpacing: '0.3px',
+              cursor: 'pointer',
+              WebkitTapHighlightColor: 'transparent',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            }}
+          >
+            <span>⏭</span>
+            <span>건너뛰기 (미제출 {players.filter(([, p]) => !p.submitted).length}명 강제 처리)</span>
+          </button>
         )}
 
         {/* 다음 문제 (호스트) */}

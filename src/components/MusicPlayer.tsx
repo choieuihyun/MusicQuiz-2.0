@@ -14,6 +14,7 @@ interface Props {
   onEnded?: () => void
   controlled?: boolean     // 방장 외 재생 버튼 숨김
   playSignal?: number      // 값이 바뀔 때마다 자동 재생 트리거
+  loop?: boolean           // true면 end 이벤트 후 자동 재시작 (onEnded 콜백은 최초 1회 동일하게 호출)
 }
 
 function formatTime(sec: number) {
@@ -23,7 +24,7 @@ function formatTime(sec: number) {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
-export default function MusicPlayer({ tracks, rgb, colorFrom, colorTo, onEnded, controlled, playSignal }: Props) {
+export default function MusicPlayer({ tracks, rgb, colorFrom, colorTo, onEnded, controlled, playSignal, loop }: Props) {
   const audioRef = useRef<HTMLAudioElement>(null)
   const [trackIdx, setTrackIdx] = useState(0)
   const [playing, setPlaying] = useState(false)
@@ -107,9 +108,15 @@ export default function MusicPlayer({ tracks, rgb, colorFrom, colorTo, onEnded, 
         onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime ?? 0)}
         onLoadedMetadata={() => setDuration(audioRef.current?.duration ?? 0)}
         onEnded={() => {
-          setPlaying(false)
           if (onEnded) onEnded()
-          else handleNext()
+          if (loop && audioRef.current && hasSrc) {
+            // 반복 재생: 처음으로 되감고 다시 재생
+            audioRef.current.currentTime = 0
+            audioRef.current.play().catch(() => setPlaying(false))
+            return
+          }
+          setPlaying(false)
+          if (!onEnded) handleNext()
         }}
       />
 
