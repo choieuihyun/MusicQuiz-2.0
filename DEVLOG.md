@@ -430,3 +430,85 @@ Firebase 3개 서비스 역할 분담:
 - `currentMusicURL` state 추가
 - `room.currentQuestion` 변경 시 Storage에서 해당 곡 URL 자동 fetch (useEffect)
 - 가사 카드 위에 `MusicPlayer` 렌더링 — 파트 컬러(`rgb`, `from`, `to`) 연동
+
+### 타이머 시작 시점 변경 — 음악 종료 후 카운트다운
+
+**배경**: 기존엔 문제 시작 동시에 15초 타이머가 돌아서 음악을 다 듣기 전에 제출 압박을 받았음. 음악을 완전히 듣고 난 뒤 15초를 주도록 변경.
+
+**`src/components/MusicPlayer.tsx`**
+- `Props`에 `onEnded?: () => void` 추가
+- `<audio onEnded>` — `onEnded` prop이 있으면 콜백 호출 (자동 다음 트랙 이동 skip)
+
+**`src/pages/MultiQuiz.tsx`**
+- `musicEndedAt: number | null` 상태 추가 — 음악이 끝난 로컬 타임스탬프
+- `room.currentQuestion` 변경 시 `musicEndedAt` / `timeLeft` 리셋
+- 타이머 effect 기준을 `room.questionStartedAt` → `musicEndedAt`으로 변경
+  - 음악 재생 중엔 타이머 대기 (early return)
+- `<MusicPlayer onEnded={() => setMusicEndedAt(Date.now())}>` 연결
+- UI 개선: 음악 재생 중엔 "🎵 음악 감상 중 — 끝나면 타이머 시작" 안내 박스 표시, 종료 후 기존 카운트다운 바로 전환
+
+**트레이드오프**: 각 플레이어의 음악 종료 시각이 로컬 기준이라 네트워크 속도 차이가 있으면 타이머 시작 시각이 약간 달라짐. 구현 단순성을 위해 수용 — "음악 다 듣고 15초"라는 공정함은 유지됨.
+
+### 음악 재생 동기화 — 방장 컨트롤 + 3,2,1 카운트다운
+
+**문제**: 참가자별로 각자 음악을 재생하면 시작 시점이 제각각이라 멀티플레이어 퀴즈의 의미가 없음. 전원 동시 재생이 필요.
+
+**결정**: 방장이 "▶ 재생" 버튼을 누르면 3초 카운트다운 오버레이가 뜨고 모두 동시에 자동 재생. 참가자는 재생 버튼 노출 안 됨.
+
+**`src/lib/realtimeDB.ts`**
+- `Room`에 `musicStartedAt?: number | null` 필드 추가 (카운트다운 종료 후 재생 시작 타임스탬프)
+- `startMusic(roomCode, countdownMs=3500)` — `musicStartedAt = Date.now() + countdownMs` 기록
+- `nextQuestion` / `startGame` — 전환 시 `musicStartedAt: null` 리셋
+
+**`src/components/MusicPlayer.tsx`**
+- `controlled?: boolean` prop — 이전/재생/다음 버튼 숨김 (볼륨만 남김). 대신 "▶ 재생 중" / "방장이 재생하면 시작" 상태 텍스트 표시
+- `playSignal?: number` prop — 값이 바뀔 때마다 audio.currentTime = 0 + audio.play() 트리거
+
+**`src/pages/MultiQuiz.tsx`**
+- `countdown` 상태 — `room.musicStartedAt` 감지해서 남은 초 계산 (100ms 간격 tick)
+- 카운트다운 0 도달 시 `playSignal` 증가 → MusicPlayer 자동 재생
+- 방장 전용 "▶ 재생 시작 (전원 동시)" 버튼 — 뮤직 플레이어 아래 배치, `currentMusicURL` 로딩되면 활성화
+- 전체 화면 카운트다운 오버레이 — "준비하세요" 라벨 + 180px 숫자 (resultPop 애니메이션) + 회전 🎵 뱃지, `radial-gradient` 블러 배경
+- 상단 상태 배너 분기 — `!musicStartedAt` 이면 "방장이 재생하길 기다리는 중..." / 방장이면 "▶ 재생을 눌러 시작하세요"
+
+**`src/pages/MultiQuiz.tsx`**
+- 진행률/타이머 영역 아래 · 뮤직 플레이어 위에 제출 현황 스트립 추가
+- 좌측: `N/M SUBMITTED` 카운터 (파트 컬러)
+- 우측: 각 플레이어 원형 아바타(26px) 가로 나열
+  - 미제출: 투명도 45% + 기본 테두리 + 🎤
+  - 제출: 파트 컬러 테두리 + ✓ 뱃지 + 글로우
+- RTDB `players[sessionId].submitted` 변경이 이미 실시간 구독 중이므로 별도 작업 없이 자동 갱신
+- `hover` 시 툴팁으로 닉네임 + 제출 여부 표시
+- 정답 공개(`revealed`) 단계에서는 숨김
+
+### 다음 곡 로딩 버그 수정 — MusicPlayer 트랙 리셋 의존성
+
+**증상**: 다음 문제로 넘어가면 음악이 자동으로 교체되지 않고 재생 불가 상태.
+
+**원인**: `MusicPlayer`의 트랙 리셋 effect가 `[trackIdx]`에만 의존. MultiQuiz에서는 항상 단일 트랙 배열로 `src`만 갈아끼우므로 `trackIdx`가 그대로라 `audio.load()` 호출이 안 돼서 새 URL이 버퍼링되지 않음.
+
+**수정**
+- `MusicPlayer.tsx` — 트랙 리셋 effect 의존성을 `[trackIdx]` → `[track?.src]` 로 변경
+- src 변경 시 `audio.load()` + `setPlaying(false)` 초기화
+
+### `titleEn` → `title` 필드 재명명 + 영문 키 기준 Storage 매핑
+
+**배경**: Storage 파일명이 한글(`song`)이 아닌 영문(`title`) 키로 업로드되어 있음을 확인. 초기 import 스크립트는 `song`(한글)만 저장했기 때문에 한글 곡명인 경우(예: `180도`)는 Storage에서 찾지 못해 404 에러 발생.
+
+**데이터 스키마 변경**
+- `src/types/quiz.ts` `QuizQuestion`에 `title: string` 필드 추가 (중간 단계에서 `titleEn` 썼다가 최종 `title`로 정착)
+  - `title`: 영문 곡 ID, Storage 파일명 키 (ex: `180Angle`)
+  - `song`: 한글 제목, 화면 표시용 (ex: `180도`)
+- `scripts/importQuiz.mjs` — ROWS 배열을 `[id, title(영문), song(한글), artist, lyrics, opts, correctId]` 형식으로 재구성. `title` 필드 포함해서 Firestore에 업로드
+
+**코드 수정**
+- `MultiQuiz.tsx` — `getMusicURL` 호출 시 `q.song` → `q.title` 로 변경 (Storage 조회 키)
+  - 화면 표시용 MusicPlayer 트랙 `title`과 가사 카드 곡명은 여전히 `q.song`(한글) 사용
+- `firestore.ts::getMusicURL(partId, title)` 시그니처 유지 (파라미터명만 의미 변경)
+
+**진단 로그 추가 (나중에 제거 가능)**
+- `MultiQuiz.tsx` — `[방 구독 시작]` / `[방 데이터 수신]` / `[문제 로드 체크]` / `[문제 로드 시도]` / `[문제 로드 성공]` / `[음악 로드 시도]` / `[음악 로드 성공]` / `[음악 로드 실패]` console.log
+
+### Firestore `musicquizdb`에 50곡 초기 업로드 완료
+- `bun run scripts/importQuiz.mjs` 로 Part.1 50곡 저장 성공 (`quizzes/1/questions/1~50`)
+- 브라우저 콘솔에서 `[문제 로드 성공] 50 곡` 로그 확인

@@ -5,6 +5,7 @@ import {
   subscribeToRoom, submitAnswer, nextQuestion, showResult,
   sendNudge, subscribeToNudge, clearNudge,
   sendChatMessage, subscribeToChatMessages, subscribeToBubbles,
+  startMusic,
 } from '../lib/realtimeDB'
 import type { Room, ChatMessage, Bubble } from '../lib/realtimeDB'
 import { saveScore, getPartQuestions, getMusicURL } from '../lib/firestore'
@@ -78,27 +79,68 @@ export default function MultiQuiz() {
   const [questions, setQuestions] = useState<QuizQuestion[]>([])
   const [questionsLoaded, setQuestionsLoaded] = useState(false)
   const [currentMusicURL, setCurrentMusicURL] = useState('')
+  const [musicEndedAt, setMusicEndedAt] = useState<number | null>(null)
+  const [countdown, setCountdown] = useState<number | null>(null)
+  const [playSignal, setPlaySignal] = useState(0)
 
   // 파트 문제 로드 (Firestore)
   useEffect(() => {
     const partId = room?.partId
+    console.log('[문제 로드 체크] room=', !!room, 'partId=', partId)
     if (!partId) return
+    console.log('[문제 로드 시도] quizzes/' + partId + '/questions')
     getPartQuestions(partId)
-      .then(qs => { setQuestions(qs); setQuestionsLoaded(true) })
-      .catch(err => { console.error('[문제 로드 실패]', err); setQuestionsLoaded(true) })
+      .then(qs => {
+        console.log('[문제 로드 성공]', qs.length, '곡')
+        setQuestions(qs)
+        setQuestionsLoaded(true)
+      })
+      .catch(err => {
+        console.error('[문제 로드 실패]', err)
+        setQuestionsLoaded(true)
+      })
   }, [room?.partId])
 
-  // 현재 문제 음악 URL 로드 (Storage)
+  // 현재 문제 음악 URL 로드 (Storage — title 기준)
   useEffect(() => {
     const partId = room?.partId
     const qIndex = room?.currentQuestion ?? 0
-    const song = questions[qIndex]?.song
-    if (!partId || !song) return
+    const key = questions[qIndex]?.title
+    if (!partId || !key) return
     setCurrentMusicURL('')
-    getMusicURL(partId, song)
-      .then((url: string) => setCurrentMusicURL(url))
-      .catch(() => setCurrentMusicURL(''))
+    console.log('[음악 로드 시도]', `secondMusicQuiz/${key}.mp3`)
+    getMusicURL(partId, key)
+      .then((url: string) => {
+        console.log('[음악 로드 성공]', key)
+        setCurrentMusicURL(url)
+      })
+      .catch((err) => {
+        console.error('[음악 로드 실패]', key, err?.code ?? err?.message ?? err)
+        setCurrentMusicURL('')
+      })
   }, [room?.partId, room?.currentQuestion, questions])
+
+  // 방장의 재생 시작 → 3,2,1 카운트다운 → 동시 재생
+  useEffect(() => {
+    const startAt = room?.musicStartedAt
+    if (!startAt) { setCountdown(null); return }
+    let firedPlay = false
+    const tick = () => {
+      const remaining = Math.ceil((startAt - Date.now()) / 1000)
+      if (remaining > 0) {
+        setCountdown(remaining)
+      } else {
+        setCountdown(null)
+        if (!firedPlay) {
+          firedPlay = true
+          setPlaySignal(s => s + 1)
+        }
+      }
+    }
+    tick()
+    const id = setInterval(tick, 100)
+    return () => clearInterval(id)
+  }, [room?.musicStartedAt])
 
   const meta = partMeta(room?.partId ?? '')
   const isHost = room?.hostId === sessionId
@@ -121,8 +163,10 @@ export default function MultiQuiz() {
 
   // 방 구독
   useEffect(() => {
+    console.log('[방 구독 시작]', roomCode)
     if (!roomCode) return
     const unsubscribe = subscribeToRoom(roomCode, (roomData) => {
+      console.log('[방 데이터 수신]', roomData ? 'OK' : 'NULL', 'status=', roomData?.status, 'partId=', roomData?.partId)
       if (!roomData) {
         setCurrentRoom(null)
         navigate('/rooms')
@@ -154,17 +198,22 @@ export default function MultiQuiz() {
     return () => unsubscribe()
   }, [roomCode, room?.currentQuestion, revealed, navigate, setCurrentRoom, sessionId, questions])
 
-  // 타이머
+  // 문제 바뀌면 음악 종료 시각 리셋
+  useEffect(() => {
+    setMusicEndedAt(null)
+    setTimeLeft(null)
+  }, [room?.currentQuestion])
+
+  // 타이머 — 음악이 끝난 시점부터 카운트다운 시작
   useEffect(() => {
     if (!room || room.status !== 'playing' || revealed) {
       if (timerRef.current) clearInterval(timerRef.current)
       return
     }
-    const startedAt = room.questionStartedAt
+    if (!musicEndedAt) return // 음악 재생 중엔 타이머 대기
     const limit = room.timeLimit
-    if (!startedAt) return
     const tick = () => {
-      const elapsed = Math.floor((Date.now() - startedAt) / 1000)
+      const elapsed = Math.floor((Date.now() - musicEndedAt) / 1000)
       const remaining = Math.max(0, limit - elapsed)
       setTimeLeft(remaining)
       if (remaining <= 0 && !localSubmitted && !revealed) {
@@ -175,7 +224,7 @@ export default function MultiQuiz() {
     tick()
     timerRef.current = setInterval(tick, 100)
     return () => { if (timerRef.current) clearInterval(timerRef.current) }
-  }, [room?.questionStartedAt, room?.timeLimit, room?.status, revealed, localSubmitted, selected, roomCode, sessionId])
+  }, [musicEndedAt, room?.timeLimit, room?.status, revealed, localSubmitted, selected, roomCode, sessionId])
 
   // 재촉 구독
   useEffect(() => {
@@ -268,6 +317,11 @@ export default function MultiQuiz() {
     if (!roomCode || !isHost) return
     if (currentQ + 1 >= questions.length) await showResult(roomCode)
     else await nextQuestion(roomCode, currentQ + 1)
+  }
+
+  const handleStartMusic = async () => {
+    if (!roomCode || !isHost || room?.musicStartedAt) return
+    await startMusic(roomCode)
   }
 
   const handleGoHome = () => {
@@ -541,6 +595,47 @@ export default function MultiQuiz() {
               boxShadow: `0 0 6px ${CONFETTI_COLORS[i % CONFETTI_COLORS.length]}`,
             }} />
           ))}
+        </div>
+      )}
+
+      {/* 카운트다운 오버레이 (음악 재생 전 3,2,1) */}
+      {countdown !== null && countdown > 0 && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 300, pointerEvents: 'none',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          background: 'radial-gradient(ellipse at center, rgba(6,4,18,0.72) 0%, rgba(6,4,18,0.4) 60%, transparent 100%)',
+          backdropFilter: 'blur(8px)',
+        }}>
+          <div style={{
+            fontSize: 13, fontWeight: 800, letterSpacing: '6px', textTransform: 'uppercase',
+            color: `rgba(${meta.rgb},0.85)`,
+            marginBottom: 18,
+            textShadow: `0 0 20px rgba(${meta.rgb},0.8)`,
+          }}>
+            준비하세요
+          </div>
+          <div
+            key={countdown}
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: 180, lineHeight: 1, color: '#fff',
+              textShadow: `0 0 80px rgba(${meta.rgb},0.95), 0 0 40px rgba(${meta.rgb},0.7)`,
+              animation: 'resultPop 0.7s cubic-bezier(0.34,1.5,0.64,1)',
+            }}
+          >
+            {countdown}
+          </div>
+          <div style={{
+            marginTop: 22,
+            width: 80, height: 80, borderRadius: '50%',
+            background: `linear-gradient(145deg, ${meta.from}, ${meta.to})`,
+            boxShadow: `0 0 60px rgba(${meta.rgb},0.7), inset 0 2px 0 rgba(255,255,255,0.25)`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 40,
+            animation: 'badgePulse 1s ease-in-out infinite',
+          } as React.CSSProperties}>
+            🎵
+          </div>
         </div>
       )}
 
@@ -980,6 +1075,27 @@ export default function MultiQuiz() {
           }} />
         </div>
 
+        {/* 상태 안내 배너 */}
+        {room.status === 'playing' && !musicEndedAt && !revealed && (
+          <div style={{
+            marginTop: 10,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            padding: '8px 14px',
+            background: `rgba(${meta.rgb},0.08)`,
+            border: `1px solid rgba(${meta.rgb},0.2)`,
+            borderRadius: 10,
+          }}>
+            <span style={{
+              fontSize: 12, fontWeight: 700, letterSpacing: '0.5px',
+              color: `rgba(${meta.rgb},0.95)`,
+            }}>
+              {!room.musicStartedAt
+                ? (isHost ? '▶ 재생을 눌러 시작하세요' : '방장이 재생하길 기다리는 중...')
+                : '🎵 음악 감상 중 — 끝나면 타이머 시작'}
+            </span>
+          </div>
+        )}
+
         {/* 타이머 바 */}
         {room.status === 'playing' && timeLeft !== null && !revealed && (
           <div style={{ marginTop: 10 }}>
@@ -1021,6 +1137,77 @@ export default function MultiQuiz() {
         )}
       </div>
 
+      {/* 제출 현황 스트립 (실시간) */}
+      {room.status === 'playing' && !revealed && players.length > 0 && (
+        <div style={{
+          padding: '8px 16px 0',
+          display: 'flex', alignItems: 'center', gap: 10,
+        }}>
+          <span style={{
+            fontFamily: 'var(--font-number)',
+            fontSize: 13, fontWeight: 800, color: `rgba(${meta.rgb},0.95)`,
+            letterSpacing: '0.5px', flexShrink: 0,
+          }}>
+            {players.filter(([, p]) => p.submitted).length}
+            <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 600 }}>
+              /{players.length}
+            </span>
+          </span>
+          <span style={{
+            fontSize: 10, fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase',
+            color: 'rgba(255,255,255,0.35)', flexShrink: 0,
+          }}>
+            SUBMITTED
+          </span>
+          <div style={{
+            flex: 1, display: 'flex', gap: 4, overflowX: 'auto',
+            scrollbarWidth: 'none', minWidth: 0,
+          }}>
+            {players.map(([pid, player]) => {
+              const isMe = pid === sessionId
+              const done = player.submitted
+              return (
+                <div
+                  key={pid}
+                  title={`${player.displayName}${done ? ' · 제출' : ' · 대기중'}`}
+                  style={{
+                    width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
+                    background: done
+                      ? (player.photoURL ? 'transparent' : `linear-gradient(135deg, ${meta.from}, ${meta.to})`)
+                      : (player.photoURL ? 'transparent' : 'rgba(255,255,255,0.08)'),
+                    border: done
+                      ? `2px solid ${meta.from}`
+                      : `2px solid rgba(255,255,255,${isMe ? '0.3' : '0.1'})`,
+                    overflow: 'hidden',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 11,
+                    opacity: done ? 1 : 0.45,
+                    boxShadow: done ? `0 0 10px rgba(${meta.rgb},0.55)` : 'none',
+                    transition: 'opacity 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease',
+                    position: 'relative',
+                  }}
+                >
+                  {player.photoURL
+                    ? <img src={player.photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : (done ? '✓' : '🎤')
+                  }
+                  {done && player.photoURL && (
+                    <div style={{
+                      position: 'absolute', right: -2, bottom: -2,
+                      width: 12, height: 12, borderRadius: '50%',
+                      background: meta.from,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 8, fontWeight: 900, color: '#fff',
+                      boxShadow: '0 0 6px rgba(0,0,0,0.4)',
+                    }}>✓</div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {/* 가사 + 선택지 영역 */}
       <div style={{ padding: '0 14px', flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
 
@@ -1030,7 +1217,33 @@ export default function MultiQuiz() {
           rgb={meta.rgb}
           colorFrom={meta.from}
           colorTo={meta.to}
+          controlled
+          playSignal={playSignal}
+          onEnded={() => { if (!musicEndedAt) setMusicEndedAt(Date.now()) }}
         />
+
+        {/* 방장 재생 버튼 */}
+        {isHost && !room.musicStartedAt && !revealed && !musicEndedAt && (
+          <button
+            onClick={handleStartMusic}
+            disabled={!currentMusicURL}
+            style={{
+              width: '100%',
+              padding: '13px', borderRadius: 14, border: 'none',
+              background: currentMusicURL
+                ? `linear-gradient(135deg, ${meta.from}, ${meta.to})`
+                : 'rgba(255,255,255,0.07)',
+              boxShadow: currentMusicURL ? `0 6px 24px rgba(${meta.rgb},0.45)` : 'none',
+              fontFamily: 'var(--font-display)',
+              fontSize: 17, color: '#fff', letterSpacing: '0.5px',
+              cursor: currentMusicURL ? 'pointer' : 'not-allowed',
+              opacity: currentMusicURL ? 1 : 0.5,
+              WebkitTapHighlightColor: 'transparent',
+            }}
+          >
+            {currentMusicURL ? '▶ 재생 시작 (전원 동시)' : '음악 로딩 중...'}
+          </button>
+        )}
 
         {/* 가사 카드 */}
         <div style={{

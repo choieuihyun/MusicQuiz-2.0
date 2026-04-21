@@ -148,7 +148,8 @@ rooms/{roomCode}/bubbles/{sessionId}
 ```
 quizzes/{partId}/questions/{questionId}
   ├─ id: string
-  ├─ song: string           # 곡명 (한글)
+  ├─ title: string          # 영문 곡 ID (Storage 파일명 키 — ex: "180Angle")
+  ├─ song: string           # 곡명 (한글 — 화면 표시용)
   ├─ artist: string
   ├─ lyrics: string         # 빈칸은 `(  )` 표기 (2 spaces)
   ├─ options: { id: number; text: string }[]   # 5개 선택지
@@ -180,11 +181,12 @@ query(
 ### Firebase Storage
 
 ```
-profiles/{sessionId}              # 프로필 사진 (로그인 시 업로드) ✅
-secondMusicQuiz/{songTitle}.mp3   # 음악 파일 ✅
+profiles/{sessionId}          # 프로필 사진 (로그인 시 업로드) ✅
+secondMusicQuiz/{title}.mp3   # 음악 파일 (영문 title 키 기준) ✅
 ```
 - 프로필 사진: 로그인 시 업로드 → `getDownloadURL()` → playerStore / RTDB / Firestore에 URL 저장
-- 음악 파일: `getMusicURL(partId, songTitle)` → `secondMusicQuiz/{songTitle}.mp3` → `MusicPlayer` `src`에 주입 ✅
+- 음악 파일: `getMusicURL(partId, title)` → `secondMusicQuiz/{title}.mp3` → `MusicPlayer` `src`에 주입 ✅
+- **중요**: 파일명은 Firestore `title` 필드(영문 키)와 정확히 일치해야 함. 예: Firestore `title: "180Angle"` → Storage `180Angle.mp3`
 
 ---
 
@@ -195,7 +197,8 @@ secondMusicQuiz/{songTitle}.mp3   # 음악 파일 ✅
 interface QuizQuestion {
   id: string
   lyrics: string      // 빈칸은 (  ) 표기
-  song: string
+  song: string        // 곡명 (한글 — UI 표시용)
+  title: string       // 영문 곡 ID (Storage 파일명 키)
   artist: string
   options: { id: number; text: string }[]  // 5개
   correctId: number

@@ -11,6 +11,9 @@ interface Props {
   rgb: string
   colorFrom: string
   colorTo: string
+  onEnded?: () => void
+  controlled?: boolean     // 방장 외 재생 버튼 숨김
+  playSignal?: number      // 값이 바뀔 때마다 자동 재생 트리거
 }
 
 function formatTime(sec: number) {
@@ -20,7 +23,7 @@ function formatTime(sec: number) {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
-export default function MusicPlayer({ tracks, rgb, colorFrom, colorTo }: Props) {
+export default function MusicPlayer({ tracks, rgb, colorFrom, colorTo, onEnded, controlled, playSignal }: Props) {
   const audioRef = useRef<HTMLAudioElement>(null)
   const [trackIdx, setTrackIdx] = useState(0)
   const [playing, setPlaying] = useState(false)
@@ -32,20 +35,31 @@ export default function MusicPlayer({ tracks, rgb, colorFrom, colorTo }: Props) 
   const track = tracks[trackIdx]
   const hasSrc = !!track?.src
 
-  // 트랙 변경 시 리셋
+  // 트랙(src) 변경 시 리셋
   useEffect(() => {
     const audio = audioRef.current
     if (!audio) return
     audio.load()
     setCurrentTime(0)
     setDuration(0)
-    if (playing) audio.play().catch(() => setPlaying(false))
-  }, [trackIdx])
+    setPlaying(false)
+  }, [track?.src])
 
   // 볼륨 동기화
   useEffect(() => {
     if (audioRef.current) audioRef.current.volume = volume
   }, [volume])
+
+  // 외부 재생 트리거 (playSignal 변경 시)
+  useEffect(() => {
+    if (playSignal === undefined || playSignal === 0) return
+    const audio = audioRef.current
+    if (!audio || !hasSrc) return
+    audio.currentTime = 0
+    audio.play()
+      .then(() => setPlaying(true))
+      .catch(() => setPlaying(false))
+  }, [playSignal])
 
   function togglePlay() {
     const audio = audioRef.current
@@ -92,7 +106,11 @@ export default function MusicPlayer({ tracks, rgb, colorFrom, colorTo }: Props) 
         src={track?.src || undefined}
         onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime ?? 0)}
         onLoadedMetadata={() => setDuration(audioRef.current?.duration ?? 0)}
-        onEnded={() => { setPlaying(false); handleNext() }}
+        onEnded={() => {
+          setPlaying(false)
+          if (onEnded) onEnded()
+          else handleNext()
+        }}
       />
 
       {/* 트랙 정보 */}
@@ -153,46 +171,60 @@ export default function MusicPlayer({ tracks, rgb, colorFrom, colorTo }: Props) 
 
       {/* 컨트롤 버튼 */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
-        {/* 이전 */}
-        <button onClick={handlePrev} style={btnStyle}>
-          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-            <path d="M4 4v10M14 4L8 9l6 5V4z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </button>
+        {!controlled && (
+          <>
+            {/* 이전 */}
+            <button onClick={handlePrev} style={btnStyle}>
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                <path d="M4 4v10M14 4L8 9l6 5V4z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
 
-        {/* 재생/일시정지 */}
-        <button
-          onClick={togglePlay}
-          style={{
-            width: 52, height: 52, borderRadius: '50%', border: 'none', cursor: hasSrc ? 'pointer' : 'not-allowed',
-            background: hasSrc ? `linear-gradient(145deg, ${colorFrom}, ${colorTo})` : 'rgba(255,255,255,0.1)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: hasSrc ? `0 4px 20px rgba(${rgb},0.5), inset 0 1px 0 rgba(255,255,255,0.25)` : 'none',
-            color: '#fff', WebkitTapHighlightColor: 'transparent',
-            transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-          }}
-        >
-          {playing ? (
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
-              <rect x="4" y="3" width="4" height="14" rx="1.5"/>
-              <rect x="12" y="3" width="4" height="14" rx="1.5"/>
-            </svg>
-          ) : (
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
-              <path d="M6 4l11 6-11 6V4z"/>
-            </svg>
-          )}
-        </button>
+            {/* 재생/일시정지 */}
+            <button
+              onClick={togglePlay}
+              style={{
+                width: 52, height: 52, borderRadius: '50%', border: 'none', cursor: hasSrc ? 'pointer' : 'not-allowed',
+                background: hasSrc ? `linear-gradient(145deg, ${colorFrom}, ${colorTo})` : 'rgba(255,255,255,0.1)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: hasSrc ? `0 4px 20px rgba(${rgb},0.5), inset 0 1px 0 rgba(255,255,255,0.25)` : 'none',
+                color: '#fff', WebkitTapHighlightColor: 'transparent',
+                transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+              }}
+            >
+              {playing ? (
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                  <rect x="4" y="3" width="4" height="14" rx="1.5"/>
+                  <rect x="12" y="3" width="4" height="14" rx="1.5"/>
+                </svg>
+              ) : (
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M6 4l11 6-11 6V4z"/>
+                </svg>
+              )}
+            </button>
 
-        {/* 다음 */}
-        <button onClick={handleNext} style={btnStyle}>
-          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-            <path d="M14 4v10M4 4l6 5-6 5V4z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </button>
+            {/* 다음 */}
+            <button onClick={handleNext} style={btnStyle}>
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                <path d="M14 4v10M4 4l6 5-6 5V4z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          </>
+        )}
+
+        {controlled && (
+          <div style={{
+            flex: 1, textAlign: 'center',
+            fontSize: 11, fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase',
+            color: playing ? colorFrom : 'rgba(255,255,255,0.3)',
+          }}>
+            {playing ? '▶ 재생 중' : hasSrc ? '방장이 재생하면 시작' : '로딩 중...'}
+          </div>
+        )}
 
         {/* 볼륨 */}
-        <div style={{ position: 'relative', marginLeft: 8 }}>
+        <div style={{ position: 'relative', marginLeft: controlled ? 0 : 8 }}>
           <button
             onClick={() => setShowVolume(v => !v)}
             style={{ ...btnStyle, color: showVolume ? colorFrom : 'rgba(255,255,255,0.4)' }}

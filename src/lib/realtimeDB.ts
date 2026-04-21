@@ -32,6 +32,7 @@ export interface Room {
   status: 'waiting' | 'playing' | 'result' | 'finished'
   currentQuestion: number
   questionStartedAt: number | null
+  musicStartedAt?: number | null   // 방장이 재생 누른 시각 + 카운트다운 여유(ms 타임스탬프)
   timeLimit: number
   players: Record<string, Player>
   createdAt: number
@@ -149,6 +150,7 @@ export async function startGame(roomCode: string): Promise<void> {
     status: 'playing',
     currentQuestion: 0,
     questionStartedAt: Date.now(),
+    musicStartedAt: null,
   })
 }
 
@@ -163,6 +165,7 @@ export async function nextQuestion(roomCode: string, questionIndex: number): Pro
   const updates: Record<string, unknown> = {
     currentQuestion: questionIndex,
     questionStartedAt: Date.now(),
+    musicStartedAt: null,
   }
 
   // 모든 플레이어 submitted, answer 초기화
@@ -172,6 +175,14 @@ export async function nextQuestion(roomCode: string, questionIndex: number): Pro
   })
 
   await update(roomRef, updates)
+}
+
+// 방장이 음악 재생 시작 — 3초 카운트다운 후 모두 동시 재생
+export async function startMusic(roomCode: string, countdownMs = 3500): Promise<void> {
+  const roomRef = ref(rtdb, `rooms/${roomCode}`)
+  await update(roomRef, {
+    musicStartedAt: Date.now() + countdownMs,
+  })
 }
 
 // 답 제출
